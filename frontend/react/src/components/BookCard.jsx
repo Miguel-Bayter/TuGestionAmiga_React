@@ -165,7 +165,14 @@ export default function BookCard({ book, onOpenDetails, mode }) {
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span>Stock: {stockValue}</span>
+            {hasSplitStock ? (
+              <>
+                <span>Stock compra: {Number.isFinite(stockCompra) ? stockCompra : 0}</span>
+                <span>Stock préstamo: {Number.isFinite(stockRenta) ? stockRenta : 0}</span>
+              </>
+            ) : (
+              <span>Stock: {stockValue}</span>
+            )}
 
             {/*
               Input de cantidad (compra):
@@ -194,7 +201,7 @@ export default function BookCard({ book, onOpenDetails, mode }) {
 
             <button
               type="button"
-              className={`btn-buy ${!isAvailable ? 'btn-disabled' : ''}`}
+              className={`btn-buy ${!buyAvailable ? 'btn-disabled' : ''}`}
               disabled={!buyAvailable}
               onClick={onBuy}
             >
@@ -204,7 +211,7 @@ export default function BookCard({ book, onOpenDetails, mode }) {
             {showRent ? (
               <button
                 type="button"
-                className={`btn-secondary rent-action ${!isAvailable ? 'btn-disabled' : ''}`}
+                className={`btn-secondary rent-action ${!rentAvailable ? 'btn-disabled' : ''}`}
                 disabled={!rentAvailable}
                 onClick={onRent}
               >

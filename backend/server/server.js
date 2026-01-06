@@ -1038,7 +1038,7 @@ app.delete('/api/admin/usuarios/:id', requireAdmin, asyncHandler(async (req, res
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
 
   if (Number(req.auth?.id_usuario) === id) {
-    return res.status(403).json({ error: 'No puedes eliminar tu propio usuario' });
+    return res.status(403).json({ error: 'Solo otro administrador puede eliminarte' });
   }
 
   const [hasLoans] = await pool.query('SELECT 1 FROM prestamo WHERE id_usuario = :id LIMIT 1', { id });

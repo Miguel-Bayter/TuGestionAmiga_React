@@ -341,11 +341,21 @@ export default function BookDetailsModal({ open, onClose, book }) {
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <button type="button" className="btn-indigo" disabled={!buyAvailable} onClick={onBuy}>
+                  <button
+                    type="button"
+                    className={`btn-indigo ${!buyAvailable ? 'btn-disabled' : ''}`}
+                    disabled={!buyAvailable}
+                    onClick={onBuy}
+                  >
                     Comprar
                   </button>
 
-                  <button type="button" className="btn-emerald" disabled={!rentAvailable} onClick={onRent}>
+                  <button
+                    type="button"
+                    className={`btn-emerald ${!rentAvailable ? 'btn-disabled' : ''}`}
+                    disabled={!rentAvailable}
+                    onClick={onRent}
+                  >
                     Prestar
                   </button>
 

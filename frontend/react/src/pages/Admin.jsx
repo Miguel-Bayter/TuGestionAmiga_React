@@ -17,6 +17,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { getStoredUser } from '../lib/auth.js';
 
 const emptyBook = {
   id_libro: null,
@@ -42,6 +43,7 @@ export default function Admin() {
   const [categories, setCategories] = useState([]);
 
   const [bookForm, setBookForm] = useState(emptyBook);
+  const [showBookForm, setShowBookForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [loanQuery, setLoanQuery] = useState('');
@@ -50,6 +52,7 @@ export default function Admin() {
   const [creatingUser, setCreatingUser] = useState(false);
 
   const [editUserForm, setEditUserForm] = useState({ id_usuario: null, nombre: '', correo: '', password: '' });
+  const [showUserForm, setShowUserForm] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
 
@@ -100,6 +103,7 @@ export default function Admin() {
   const onEditUser = (u) => {
     resetMessages();
     setTab('usuarios');
+    setShowUserForm(true);
     setEditUserForm({
       id_usuario: u?.id_usuario ?? null,
       nombre: String(u?.nombre || ''),
@@ -108,9 +112,25 @@ export default function Admin() {
     });
   };
 
+  const onNewUser = () => {
+    resetMessages();
+    setTab('usuarios');
+    setShowUserForm(true);
+    setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+    setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 });
+  };
+
+  const onCloseUserForm = () => {
+    resetMessages();
+    setShowUserForm(false);
+    setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+    setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 });
+  };
+
   const onCancelEditUser = () => {
     resetMessages();
     setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+    setShowUserForm(false);
   };
 
   const onSaveUser = async () => {
@@ -152,6 +172,12 @@ export default function Admin() {
     resetMessages();
     const id = Number(u?.id_usuario);
     if (!Number.isFinite(id)) return;
+
+    const me = getStoredUser();
+    if (Number(me?.id_usuario) === id) {
+      setError('Solo otro administrador puede eliminarte');
+      return;
+    }
 
     const ok = window.confirm(`¿Eliminar el usuario "${String(u?.nombre || '').trim() || 'sin nombre'}"?`);
     if (!ok) return;
@@ -207,6 +233,14 @@ export default function Admin() {
     loadAll('');
   }, []);
 
+  useEffect(() => {
+    if (tab !== 'libros') setShowBookForm(false);
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'usuarios') setShowUserForm(false);
+  }, [tab]);
+
   const categoryNameById = useMemo(() => {
     // Mapa auxiliar para mostrar nombre de categoría en la tabla de libros.
     // Evita hacer búsquedas O(n) dentro del render de cada fila.
@@ -220,6 +254,7 @@ export default function Admin() {
   const onEditBook = (row) => {
     resetMessages();
     setTab('libros');
+    setShowBookForm(true);
 
     // Se carga el libro seleccionado al formulario.
     // Esto permite reutilizar el mismo formulario para crear/editar.
@@ -240,6 +275,13 @@ export default function Admin() {
   const onNewBook = () => {
     resetMessages();
     setTab('libros');
+    setShowBookForm(true);
+    setBookForm({ ...emptyBook });
+  };
+
+  const onCloseBookForm = () => {
+    resetMessages();
+    setShowBookForm(false);
     setBookForm({ ...emptyBook });
   };
 
@@ -394,7 +436,7 @@ export default function Admin() {
       </div>
 
       {tab === 'libros' ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className={`grid grid-cols-1 gap-6 ${showBookForm ? 'lg:grid-cols-[1.2fr_0.8fr]' : ''}`}>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">Libros</h2>
@@ -451,125 +493,137 @@ export default function Admin() {
             </div>
           </div>
 
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">{bookForm.id_libro ? 'Editar libro' : 'Nuevo libro'}</h2>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="form-label">Título</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={bookForm.titulo}
-                  onChange={(e) => setBookForm((v) => ({ ...v, titulo: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Autor</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={bookForm.autor}
-                  onChange={(e) => setBookForm((v) => ({ ...v, autor: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Categoría</label>
-                <select
-                  className="form-input"
-                  value={bookForm.id_categoria}
-                  onChange={(e) => setBookForm((v) => ({ ...v, id_categoria: e.target.value }))}
-                >
-                  <option value="">(Sin categoría)</option>
-                  {(categories || []).map((c) => (
-                    <option key={c.id_categoria} value={String(c.id_categoria)}>
-                      {c.nombre_categoria}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="form-label">Stock total (legacy)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={bookForm.stock}
-                  onChange={(e) => setBookForm((v) => ({ ...v, stock: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Stock compra</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={bookForm.stock_compra}
-                  onChange={(e) => setBookForm((v) => ({ ...v, stock_compra: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Stock renta</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={bookForm.stock_renta}
-                  onChange={(e) => setBookForm((v) => ({ ...v, stock_renta: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Precio</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={bookForm.valor}
-                  onChange={(e) => setBookForm((v) => ({ ...v, valor: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Descripción</label>
-                <textarea
-                  className="form-input"
-                  rows={4}
-                  value={bookForm.descripcion}
-                  onChange={(e) => setBookForm((v) => ({ ...v, descripcion: e.target.value }))}
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
+          {showBookForm ? (
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">{bookForm.id_libro ? 'Editar libro' : 'Nuevo libro'}</h2>
                 <button
                   type="button"
-                  className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                  onClick={() => setBookForm({ ...emptyBook })}
+                  className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
+                  onClick={onCloseBookForm}
                 >
-                  Limpiar
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  onClick={onSaveBook}
-                >
-                  Guardar
+                  Cerrar
                 </button>
               </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="form-label">Título</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={bookForm.titulo}
+                    onChange={(e) => setBookForm((v) => ({ ...v, titulo: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Autor</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={bookForm.autor}
+                    onChange={(e) => setBookForm((v) => ({ ...v, autor: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Categoría</label>
+                  <select
+                    className="form-input"
+                    value={bookForm.id_categoria}
+                    onChange={(e) => setBookForm((v) => ({ ...v, id_categoria: e.target.value }))}
+                  >
+                    <option value="">(Sin categoría)</option>
+                    {(categories || []).map((c) => (
+                      <option key={c.id_categoria} value={String(c.id_categoria)}>
+                        {c.nombre_categoria}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">Stock total (legacy)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={bookForm.stock}
+                    onChange={(e) => setBookForm((v) => ({ ...v, stock: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Stock compra</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={bookForm.stock_compra}
+                    onChange={(e) => setBookForm((v) => ({ ...v, stock_compra: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Stock renta</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={bookForm.stock_renta}
+                    onChange={(e) => setBookForm((v) => ({ ...v, stock_renta: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Precio</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={bookForm.valor}
+                    onChange={(e) => setBookForm((v) => ({ ...v, valor: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Descripción</label>
+                  <textarea
+                    className="form-input"
+                    rows={4}
+                    value={bookForm.descripcion}
+                    onChange={(e) => setBookForm((v) => ({ ...v, descripcion: e.target.value }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                    onClick={() => setBookForm({ ...emptyBook })}
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    onClick={onSaveBook}
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
 
       {tab === 'usuarios' ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className={`grid grid-cols-1 gap-6 ${showUserForm ? 'lg:grid-cols-[1.2fr_0.8fr]' : ''}`}>
           <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">Usuarios</h2>
+              <button type="button" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700" onClick={onNewUser}>
+                Nuevo
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -583,6 +637,11 @@ export default function Admin() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(users || []).map((u) => (
+                    (() => {
+                      const roleId = Number(u?.id_rol);
+                      const isUserRole = roleId === 2;
+                      const isAdminRole = roleId === 1;
+                      return (
                     <tr key={u.id_usuario}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u?.nombre || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{u?.correo || '-'}</td>
@@ -593,15 +652,25 @@ export default function Admin() {
                         <div className="inline-flex items-center gap-2">
                           <button
                             type="button"
-                            className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
-                            onClick={() => onSetUserRole(u.id_usuario, 2)}
+                            disabled={isUserRole}
+                            className={
+                              isUserRole
+                                ? 'rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-400'
+                                : 'rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300'
+                            }
+                            onClick={() => (isUserRole ? null : onSetUserRole(u.id_usuario, 2))}
                           >
                             USUARIO
                           </button>
                           <button
                             type="button"
-                            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-                            onClick={() => onSetUserRole(u.id_usuario, 1)}
+                            disabled={isAdminRole}
+                            className={
+                              isAdminRole
+                                ? 'rounded-lg bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-400'
+                                : 'rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700'
+                            }
+                            onClick={() => (isAdminRole ? null : onSetUserRole(u.id_usuario, 1))}
                           >
                             ADMIN
                           </button>
@@ -623,6 +692,8 @@ export default function Admin() {
                         </div>
                       </td>
                     </tr>
+                      );
+                    })()
                   ))}
                   {Array.isArray(users) && users.length === 0 ? (
                     <tr>
@@ -636,124 +707,133 @@ export default function Admin() {
             </div>
           </div>
 
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">{editUserForm.id_usuario ? 'Editar usuario' : 'Crear usuario'}</h2>
+          {showUserForm ? (
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">{editUserForm.id_usuario ? 'Editar usuario' : 'Crear usuario'}</h2>
+                <button
+                  type="button"
+                  className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
+                  onClick={onCloseUserForm}
+                >
+                  Cerrar
+                </button>
+              </div>
+              {editUserForm.id_usuario ? (
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="form-label">Nombre</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editUserForm.nombre}
+                      onChange={(e) => setEditUserForm((v) => ({ ...v, nombre: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Correo</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={editUserForm.correo}
+                      onChange={(e) => setEditUserForm((v) => ({ ...v, correo: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Contraseña (opcional)</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={editUserForm.password}
+                      onChange={(e) => setEditUserForm((v) => ({ ...v, password: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                      onClick={onCancelEditUser}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingUser}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      onClick={onSaveUser}
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="form-label">Nombre</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={newUserForm.nombre}
+                      onChange={(e) => setNewUserForm((v) => ({ ...v, nombre: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Correo</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={newUserForm.correo}
+                      onChange={(e) => setNewUserForm((v) => ({ ...v, correo: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Contraseña</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={newUserForm.password}
+                      onChange={(e) => setNewUserForm((v) => ({ ...v, password: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Rol</label>
+                    <select
+                      className="form-input"
+                      value={String(newUserForm.id_rol)}
+                      onChange={(e) => setNewUserForm((v) => ({ ...v, id_rol: Number(e.target.value) }))}
+                    >
+                      <option value="2">USUARIO</option>
+                      <option value="1">ADMIN</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                      onClick={() => setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 })}
+                    >
+                      Limpiar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={creatingUser}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      onClick={onCreateUser}
+                    >
+                      Crear
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            {editUserForm.id_usuario ? (
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="form-label">Nombre</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={editUserForm.nombre}
-                    onChange={(e) => setEditUserForm((v) => ({ ...v, nombre: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Correo</label>
-                  <input
-                    type="email"
-                    className="form-input"
-                    value={editUserForm.correo}
-                    onChange={(e) => setEditUserForm((v) => ({ ...v, correo: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Contraseña (opcional)</label>
-                  <input
-                    type="password"
-                    className="form-input"
-                    value={editUserForm.password}
-                    onChange={(e) => setEditUserForm((v) => ({ ...v, password: e.target.value }))}
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                    onClick={onCancelEditUser}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    disabled={savingUser}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                    onClick={onSaveUser}
-                  >
-                    Guardar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="form-label">Nombre</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={newUserForm.nombre}
-                    onChange={(e) => setNewUserForm((v) => ({ ...v, nombre: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Correo</label>
-                  <input
-                    type="email"
-                    className="form-input"
-                    value={newUserForm.correo}
-                    onChange={(e) => setNewUserForm((v) => ({ ...v, correo: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Contraseña</label>
-                  <input
-                    type="password"
-                    className="form-input"
-                    value={newUserForm.password}
-                    onChange={(e) => setNewUserForm((v) => ({ ...v, password: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Rol</label>
-                  <select
-                    className="form-input"
-                    value={String(newUserForm.id_rol)}
-                    onChange={(e) => setNewUserForm((v) => ({ ...v, id_rol: Number(e.target.value) }))}
-                  >
-                    <option value="2">USUARIO</option>
-                    <option value="1">ADMIN</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                    onClick={() => setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 })}
-                  >
-                    Limpiar
-                  </button>
-                  <button
-                    type="button"
-                    disabled={creatingUser}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                    onClick={onCreateUser}
-                  >
-                    Crear
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          ) : null}
         </div>
       ) : null}
 

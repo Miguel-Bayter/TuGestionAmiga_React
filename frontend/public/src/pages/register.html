@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Biblioteca Digital</title>
+    <!--
+      register.html
+
+      Pantalla de registro de usuarios.
+
+      ¿Por qué existe?
+      - Permite crear un usuario sin necesidad de insertarlo manualmente en MySQL.
+      - Esta página es parte del frontend HTML original (sin React).
+
+      ¿Para qué sirve?
+      - Envía los datos a POST /api/register.
+      - Guarda el usuario en localStorage (sesión simple) para habilitar compras/préstamos.
+    -->
+    <!-- Script de Tailwind CSS desde CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Hoja de estilos personalizada -->
+    <link rel="stylesheet" href="../css/styles.css">
+    <style type="text/tailwindcss">
+        @layer components {
+            /* 
+             * Clases reutilizables para los formularios de autenticación.
+             * Se definen aquí para mantener el HTML limpio.
+             */
+            .auth-card {
+                @apply bg-white py-8 px-4 shadow-lg rounded-lg sm:px-10 w-full max-w-md;
+            }
+            .form-label {
+                @apply block text-sm font-medium text-gray-700 mb-2;
+            }
+            .form-input {
+                @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
+            }
+            .btn-primary-full {
+                @apply w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Contenedor principal para centrar el formulario de registro -->
+    <div class="min-h-screen flex flex-col justify-center items-center py-12 sm:px-6 lg:px-8">
+
+        <div class="sm:mx-auto sm:w-full sm:max-w-md">
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Crea una nueva cuenta
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                O
+                <a href="login.html" class="font-medium text-blue-600 hover:text-blue-500">
+                    inicia sesión si ya tienes una
+                </a>
+            </p>
+        </div>
+
+        <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+            <!-- Tarjeta de Autenticación -->
+            <div class="auth-card">
+                <!-- Formulario de Registro -->
+                <form class="space-y-6" action="../../index.html" method="GET">
+                    <!-- Campo de Nombre -->
+                    <div>
+                        <label for="name" class="form-label">Nombre Completo</label>
+                        <input id="name" name="name" type="text" required class="form-input" placeholder="Miguel Bayter">
+                    </div>
+
+                    <!-- Campo de Email -->
+                    <div>
+                        <label for="email" class="form-label">Correo Electrónico</label>
+                        <input id="email" name="email" type="email" autocomplete="email" required class="form-input" placeholder="ejemplo@correo.com">
+                    </div>
+
+                    <!-- Campo de Contraseña -->
+                    <div>
+                        <label for="password" class="form-label">Contraseña</label>
+                        <input id="password" name="password" type="password" autocomplete="new-password" required class="form-input" placeholder="Crea una contraseña">
+                    </div>
+
+                    <!-- Campo de Confirmar Contraseña -->
+                    <div>
+                        <label for="password-confirm" class="form-label">Confirmar Contraseña</label>
+                        <input id="password-confirm" name="password_confirmation" type="password" autocomplete="new-password" required class="form-input" placeholder="Confirma tu contraseña">
+                    </div>
+
+                    <!-- Botón de Envío -->
+                    <div>
+                        <button type="submit" class="btn-primary-full">
+                            Registrarse
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/script.js"></script>
+</body>
+</html>

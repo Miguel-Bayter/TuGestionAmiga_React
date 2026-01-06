@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Libros Rentables - Biblioteca Digital</title>
+    <!--
+      rentable.html
+
+      Pantalla del catálogo filtrado para mostrar solo libros disponibles.
+
+      ¿Por qué existe?
+      - En la maqueta se planteó una vista “Rentable” separada para enfocar el préstamo.
+      - Permite probar el filtro de disponibilidad sin depender de React.
+
+      ¿Para qué sirve?
+      - Consume GET /api/libros?disponible=true.
+      - Renderiza tarjetas de libros y habilita acciones (detalle / comprar / rentar).
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../css/styles.css">
+    <style type="text/tailwindcss">
+        @layer components {
+            .card { @apply bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg; }
+            .btn { @apply w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2; }
+            .btn-primary { @apply btn bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500; }
+            .btn-secondary { @apply btn bg-teal-600 text-white hover:bg-teal-700 focus-visible:ring-teal-500; }
+            .btn-outline { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400; }
+            .sidebar-link { @apply flex items-center p-2 text-gray-600 hover:bg-gray-100 rounded-md; }
+            .sidebar-link-active { @apply bg-blue-100 text-blue-600 font-semibold; }
+            .filter-btn { @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors duration-200; }
+            .filter-btn-active { @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg; }
+
+            /*
+             * Layout de cards:
+             * - Por defecto usamos la vista principal (lista horizontal, como la imagen de referencia).
+             * - El JS puede aplicar la clase `.view-grid` al contenedor de resultados para convertir
+             *   el layout a cards verticales en grid.
+             */
+            .card-inner { @apply p-4 flex flex-col sm:flex-row gap-4; }
+            .book-meta { @apply flex-1; }
+            .view-grid .card-inner { @apply p-0 flex-col gap-0; }
+            .view-grid .book-meta { @apply p-4; }
+
+            .book-cover { @apply w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-md border border-gray-200 flex-shrink-0; }
+            .view-grid .book-cover { @apply w-full h-48 rounded-none border-0; }
+
+            .book-actions { @apply mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2; }
+            .view-grid .book-actions { @apply grid-cols-1; }
+
+            /* Badge de estado para indicar disponibilidad (rentado / en stock / sin stock) */
+            .status-badge { @apply inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap; }
+            .status-instock { @apply bg-green-100 text-green-800; }
+            .status-rented { @apply bg-blue-100 text-blue-800; }
+            .status-out { @apply bg-red-100 text-red-800; }
+
+            .btn-disabled { @apply opacity-50 cursor-not-allowed pointer-events-none; }
+
+            .btn-details { @apply w-full px-3 py-2 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500; }
+            .btn-buy { @apply w-full px-3 py-2 text-xs font-semibold rounded-md bg-amber-600 text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-500; }
+            .btn-buy-outline { @apply w-full px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50; }
+            .btn-rent { @apply w-full px-3 py-2 text-xs font-semibold rounded-md border border-teal-600 text-teal-700 bg-white hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-500; }
+            .btn-rent-outline { @apply btn-rent; }
+        }
+    </style>
+</head>
+ <body class="bg-gray-100 overflow-x-hidden">
+    
+    <div class="relative min-h-screen md:flex">
+        
+        <!-- Sidebar -->
+        <aside id="sidebar" class="bg-white w-64 p-4 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out shadow-lg">
+            <nav>
+                <ul>
+                    <li class="mt-2"><a href="../../index.html" class="sidebar-link sidebar-link-active"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg><span class="ml-3">Buscar</span></a></li>
+                    <li class="mt-2"><a href="prestamos.html" class="sidebar-link"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg><span class="ml-3">Préstamos</span></a></li>
+                    <li class="mt-2"><a href="cuenta.html" class="sidebar-link"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg><span class="ml-3">Mi Cuenta</span></a></li>
+                    <li class="mt-2"><a href="ayuda.html" class="sidebar-link"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.79 4 4s-1.79 4-4 4c-1.742 0-3.223-.835-3.772-2M12 18h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span class="ml-3">Ayuda</span></a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <div class="flex-1 flex flex-col">
+            
+            <!-- Header -->
+            <header class="bg-white shadow">
+                <!-- ... (mismo header que en las otras páginas) ... -->
+                <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-shrink-0"><span class="text-2xl font-bold text-blue-600">Biblioteca</span></div>
+                        <div class="hidden md:block">
+                            <div class="ml-10 flex items-baseline space-x-4">
+                                <a href="../../index.html" class="text-gray-500 hover:bg-gray-200 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Inicio</a>
+                                <a href="login.html" class="text-gray-500 hover:bg-gray-200 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Cerrar Sesión</a>
+                            </div>
+                        </div>
+                        <div class="md:hidden flex items-center">
+                            <button id="mobile-menu-button" aria-label="Abrir menú" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" /></svg></button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Área de Contenido de Libros Rentables -->
+            <main class="flex-1 p-6 overflow-y-auto">
+                <div class="max-w-7xl mx-auto">
+                    <!-- Título y Filtros -->
+                    <div class="mb-6">
+                        <h1 class="text-3xl font-bold text-gray-900 mb-4">Libros Disponibles para Rentar</h1>
+                        <!--
+                          Filtros:
+                          - "Todos" y "Comprar" navegan a index con querystring (?filter=...)
+                          - "Rentable" mantiene esta página.
+                          Toggle de vista:
+                          - El botón "Cambiar vista" alterna la forma de las cards (lista vs grid).
+                        -->
+                        <div class="mt-4 flex flex-wrap items-center gap-2" id="filter-buttons">
+                            <a href="../../index.html?filter=todos" class="filter-btn" data-filter="todos">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                <span>Todos</span>
+                            </a>
+                            <a href="../../index.html?filter=comprar" class="filter-btn" data-filter="comprar">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 7H19M7 13l-2-8m2 8h12" /></svg>
+                                <span>Comprar</span>
+                            </a>
+                            <a href="rentable.html" class="filter-btn-active" data-filter="rentable">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.105 0-2 .895-2 2v7a2 2 0 104 0v-7c0-1.105-.895-2-2-2z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 10V7a5 5 0 0110 0v3" /></svg>
+                                <span>Rentable</span>
+                            </a>
+
+                            <button id="view-toggle" type="button" class="w-full sm:w-auto sm:ml-auto filter-btn justify-center" aria-label="Cambiar vista">
+                                <span id="view-toggle-label">Cambiar vista</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Resultados -->
+                    <div>
+                        <!--
+                          Contenedor de resultados:
+                          - Por defecto es lista (space-y-4) y layout horizontal.
+                          - El JS puede aplicar `.view-grid` y clases de grid para cambiar a vista alternativa.
+                        -->
+                        <div id="results-container" class="space-y-4">
+                            
+                            <!-- Tarjeta de Libro (Solo Rentable) -->
+                            <div class="card">
+                                <div class="card-inner">
+                                    <img src="../assets/images/Fundamentos_java.jpg" alt="Portada del libro Fundamentos de Java" class="book-cover">
+                                    <div class="book-meta">
+                                        <!-- Estado + stock (maqueta): se muestran como texto y badge visual -->
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h3 class="text-lg font-bold text-gray-900">Fundamentos de Java</h3>
+                                                <p class="text-sm text-gray-600 mt-1">Conceptos esenciales y básicos para empezar a programar en Java.</p>
+                                            </div>
+                                            <span class="status-badge status-instock">En stock</span>
+                                        </div>
+                                        <p class="mt-2 text-xs text-gray-500">Stock: 2</p>
+
+                                        <!--
+                                          Acciones (solo 3):
+                                          - Ver Details / Comprar / Rentable
+                                          Nota: `rent-action` permite que el filtro "Comprar" oculte este botón en index.
+                                        -->
+                                        <div class="book-actions">
+                                            <button class="btn-details">Ver Details</button>
+                                            <button class="btn-buy">Comprar</button>
+                                            <button class="btn-secondary rent-action">Rentable</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-inner">
+                                    <img src="../assets/images/java_para_principiantes.jpg" alt="Portada del libro Java para Principiantes" class="book-cover">
+                                    <div class="book-meta">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h3 class="text-lg font-bold text-gray-900">Java para Principiantes</h3>
+                                                <p class="text-sm text-gray-600 mt-1">La guía definitiva para iniciar en el mundo del desarrollo con Java.</p>
+                                            </div>
+                                            <span class="status-badge status-rented">Rentado</span>
+                                        </div>
+                                        <p class="mt-2 text-xs text-gray-500">Stock: 1</p>
+
+                                        <div class="book-actions">
+                                            <button class="btn-details">Ver Details</button>
+                                            <button class="btn-buy">Comprar</button>
+                                            <button class="btn-secondary rent-action btn-disabled" disabled>Rentable</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="../js/script.js"></script>
+</body>
+</html>

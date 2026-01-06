@@ -1,0 +1,26 @@
+/*
+  styles.css
+
+  Este archivo se utiliza para definir estilos globales y variables CSS 
+  que complementan a Tailwind CSS.
+*/
+
+/*
+  :root
+  Aquí definimos las variables de color para toda la aplicación.
+  Esto centraliza la paleta de colores, facilitando cambios de tema
+  y asegurando consistencia visual.
+*/
+:root {
+  --color-primary: #3b82f6; /* Azul principal */
+  --color-secondary: #6b7280; /* Gris para texto y elementos secundarios */
+  --color-light-gray: #f3f4f6; /* Gris claro para fondos y bordes */
+  --color-white: #ffffff; /* Blanco para fondos de tarjetas y texto */
+  --color-dark-text: #1f2937; /* Color de texto principal oscuro */
+}
+
+/* 
+  Aquí podríamos añadir más estilos personalizados si fueran necesarios,
+  por ejemplo, para componentes complejos que no se manejan fácilmente 
+  solo con utilidades de Tailwind.
+*/

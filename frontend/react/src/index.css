@@ -1,0 +1,171 @@
+/*
+  index.css
+
+  Estilos globales del frontend React (Tailwind + componentes reutilizables).
+
+  ¿Por qué existe?
+  - Tailwind aporta utilidades, pero aquí se definen clases semánticas reutilizables.
+  - Centraliza estilos compartidos (botones, cards, sidebar, etc.) para mantener consistencia.
+
+  ¿Para qué sirve?
+  - Declarar directivas de Tailwind.
+  - Definir tokens CSS (variables) y componentes con @layer.
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #3b82f6;
+  --color-secondary: #6b7280;
+  --color-light-gray: #f3f4f6;
+  --color-white: #ffffff;
+  --color-dark-text: #1f2937;
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  .btn {
+    @apply w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:translate-y-px;
+  }
+
+  .btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500;
+  }
+
+  .btn-indigo {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:ring-indigo-500;
+  }
+
+  .btn-emerald {
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500;
+  }
+
+  .btn-neutral {
+    @apply btn bg-gray-200 text-gray-800 hover:bg-gray-300 focus-visible:ring-gray-400;
+  }
+
+  .btn-secondary {
+    @apply btn bg-teal-600 text-white hover:bg-teal-700 focus-visible:ring-teal-500;
+  }
+
+  .btn-outline {
+    @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400;
+  }
+
+  .sidebar-link {
+    @apply flex items-center p-2 text-gray-600 hover:bg-gray-100 rounded-md;
+  }
+
+  .sidebar-link-active {
+    @apply bg-blue-100 text-blue-600 font-semibold;
+  }
+
+  .filter-btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors duration-200;
+  }
+
+  .filter-btn-active {
+    @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg;
+  }
+
+  .card-inner {
+    @apply p-4 flex flex-col sm:flex-row gap-4;
+  }
+
+  .book-meta {
+    @apply flex-1;
+  }
+
+  .view-grid .card-inner {
+    @apply p-0 flex-col gap-0;
+  }
+
+  .view-grid .book-meta {
+    @apply p-4;
+  }
+
+  .book-cover {
+    @apply w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-md border border-gray-200 flex-shrink-0;
+  }
+
+  .view-grid .book-cover {
+    @apply w-full h-48 rounded-none border-0;
+  }
+
+  .book-actions {
+    @apply mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2;
+  }
+
+  .view-grid .book-actions {
+    @apply grid-cols-1;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap;
+  }
+
+  .status-instock {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .status-rented {
+    @apply bg-blue-100 text-blue-800;
+  }
+
+  .status-out {
+    @apply bg-red-100 text-red-800;
+  }
+
+  .btn-disabled {
+    @apply opacity-50 cursor-not-allowed pointer-events-none;
+  }
+
+  .btn-details {
+    @apply w-full px-3 py-2 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500;
+  }
+
+  .btn-buy {
+    @apply w-full px-3 py-2 text-xs font-semibold rounded-md bg-amber-600 text-white shadow-sm hover:bg-amber-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-500;
+  }
+
+  .btn-buy-outline {
+    @apply w-full px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50;
+  }
+
+  .btn-rent {
+    @apply w-full px-3 py-2 text-xs font-semibold rounded-md border border-teal-600 text-teal-700 bg-white hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-500;
+  }
+
+  .btn-rent-outline {
+    @apply btn-rent;
+  }
+
+  .auth-card {
+    @apply bg-white p-8 rounded-lg shadow-lg w-full max-w-md;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .form-input {
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
+  }
+
+  .qty-input {
+    @apply rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200;
+  }
+
+  .qty-input-sm {
+    @apply qty-input px-2 py-1 text-xs;
+  }
+
+  .btn-primary-full {
+    @apply w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500;
+  }
+}

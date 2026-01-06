@@ -1,3 +1,166 @@
+# GA7-220501096-AA5-EV01 diseño y desarrollo de servicios web - caso
+
+## 1) Descripción del servicio
+
+Se implementó un servicio web para **registro** e **inicio de sesión**.
+
+El servicio recibe un **usuario** y una **contraseña**.
+
+- Si la autenticación es correcta devuelve el mensaje: **"Autenticación satisfactoria"**.
+- Si la autenticación falla devuelve el mensaje: **"Error en la autenticación"**.
+
+Nota:
+
+- En este proyecto, el campo `usuario` se interpreta como **correo** porque en la base de datos la tabla `usuario` trabaja con `correo`.
+
+## 2) Endpoints disponibles
+
+Base URL (local):
+
+- `http://localhost:3000`
+
+### 2.1 Registro
+
+`POST /api/auth/register`
+
+Body (JSON):
+
+```json
+{
+  "usuario": "correo@dominio.com",
+  "password": "1234",
+  "nombre": "opcional"
+}
+```
+
+Respuestas esperadas:
+
+- `201` (OK)
+  - `ok: true`
+  - `message: "Registro satisfactorio"`
+- `400` si falta `usuario` o `password`
+- `409` si el usuario ya existe
+
+### 2.2 Inicio de sesión
+
+`POST /api/auth/login`
+
+Body (JSON):
+
+```json
+{
+  "usuario": "correo@dominio.com",
+  "password": "1234"
+}
+```
+
+Respuestas esperadas:
+
+- `200` (OK)
+  - `ok: true`
+  - `message: "Autenticación satisfactoria"`
+  - `user`: datos básicos del usuario (sin contraseña)
+- `401` (Credenciales inválidas)
+  - `ok: false`
+  - `error: "Error en la autenticación"`
+
+## 3) ¿Cómo probarlo en Postman?
+
+### 3.1 Preparación
+
+1) Levanta el backend:
+
+```bash
+# carpeta backend/
+npm install
+npm start
+```
+
+2) Verifica que esté vivo:
+
+- `GET http://localhost:3000/api/health`
+
+Debe responder algo como:
+
+```json
+{ "ok": true }
+```
+
+### 3.2 Prueba 1: Registro exitoso
+
+1) En Postman crea una request:
+
+- **Method**: `POST`
+- **URL**: `http://localhost:3000/api/auth/register`
+
+2) En la pestaña **Body**:
+
+- Selecciona **raw**
+- Tipo: **JSON**
+
+3) Pega este JSON:
+
+```json
+{
+  "usuario": "prueba@mail.com",
+  "password": "1234",
+  "nombre": "Usuario Prueba"
+}
+```
+
+Resultado esperado:
+
+- Status `201`
+- Respuesta con `message: "Registro satisfactorio"`
+
+### 3.3 Prueba 2: Registro repetido (usuario ya existe)
+
+Repite el mismo request anterior.
+
+Resultado esperado:
+
+- Status `409`
+- Mensaje indicando que el usuario ya existe.
+
+### 3.4 Prueba 3: Login exitoso
+
+1) Crea una request:
+
+- **Method**: `POST`
+- **URL**: `http://localhost:3000/api/auth/login`
+
+2) Body (raw JSON):
+
+```json
+{
+  "usuario": "prueba@mail.com",
+  "password": "1234"
+}
+```
+
+Resultado esperado:
+
+- Status `200`
+- `message: "Autenticación satisfactoria"`
+
+### 3.5 Prueba 4: Login fallido
+
+Usa la misma URL pero cambia la contraseña:
+
+```json
+{
+  "usuario": "prueba@mail.com",
+  "password": "xxxx"
+}
+```
+
+Resultado esperado:
+
+- Status `401`
+- `error: "Error en la autenticación"`
+
+---
+
 # GA7-220501096-AA4-EV03 Componente frontend del proyecto formativo y proyectos de clase (listas de chequeo)
 
 ## 1) Objetivo del proyecto

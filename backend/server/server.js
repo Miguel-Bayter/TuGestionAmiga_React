@@ -1127,6 +1127,105 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   });
 }));
 
+// ==========================================
+//  Servicio simple: Registro / Login (tarea)
+// ==========================================
+// Nota de diseño:
+// - El proyecto ya tiene /api/register y /api/login (usados por el frontend).
+// - Para cumplir el enunciado (recibir "usuario" + "contraseña"), se agregan
+//   rutas paralelas /api/auth/* sin afectar lo existente.
+//
+// Convención de este servicio:
+// - "usuario" se interpreta como correo (email) porque la BD usa usuario.correo.
+// - La contraseña se guarda como hash bcrypt (seguridad básica).
+// - En login, si autentica, devolvemos un mensaje "Autenticación satisfactoria".
+// - Si no autentica, devolvemos error "Error en la autenticación".
+
+// Registro (servicio simple):
+// Body esperado:
+// { "usuario": "correo@dominio.com", "password": "1234", "nombre": "opcional" }
+app.post('/api/auth/register', asyncHandler(async (req, res) => {
+  const { usuario, password, nombre } = req.body || {};
+
+  // Normalizamos el usuario (correo) para evitar duplicados por mayúsculas o espacios.
+  const email = String(usuario || '').trim().toLowerCase();
+
+  // Validación mínima: el enunciado pide usuario + contraseña.
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: 'usuario y password son obligatorios' });
+  }
+
+  // Si no nos mandan nombre, generamos uno simple para poder insertar en la BD.
+  // (La tabla usuario requiere nombre.)
+  const displayName = String(nombre || '').trim() || email.split('@')[0] || 'Usuario';
+
+  // Verificamos si el usuario ya existe.
+  const [exists] = await pool.query(
+    'SELECT 1 FROM usuario WHERE LOWER(TRIM(correo)) = :correo LIMIT 1',
+    { correo: email }
+  );
+  if (exists.length) {
+    return res.status(409).json({ ok: false, error: 'El usuario ya existe' });
+  }
+
+  // Hash de contraseña: nunca se guarda el texto plano.
+  const hash = await bcrypt.hash(String(password), 10);
+
+  // Por defecto registramos como rol USUARIO (id_rol = 2).
+  const [result] = await pool.query(
+    'INSERT INTO usuario (nombre, correo, `contraseña`, id_rol) VALUES (:nombre, :correo, :hash, 2)',
+    { nombre: displayName, correo: email, hash }
+  );
+
+  res.status(201).json({
+    ok: true,
+    message: 'Registro satisfactorio',
+    id_usuario: result.insertId,
+    usuario: email
+  });
+}));
+
+// Login (servicio simple):
+// Body esperado:
+// { "usuario": "correo@dominio.com", "password": "1234" }
+app.post('/api/auth/login', asyncHandler(async (req, res) => {
+  const { usuario, password } = req.body || {};
+  const email = String(usuario || '').trim().toLowerCase();
+
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: 'usuario y password son obligatorios' });
+  }
+
+  // Buscamos el hash y comparamos con bcrypt.
+  // Si el usuario no existe o el hash no coincide, la respuesta es la misma.
+  const [rows] = await pool.query(
+    'SELECT id_usuario, nombre, correo, id_rol, `contraseña` AS password_hash FROM usuario WHERE LOWER(TRIM(correo)) = :correo LIMIT 1',
+    { correo: email }
+  );
+
+  if (!rows.length) {
+    return res.status(401).json({ ok: false, error: 'Error en la autenticación' });
+  }
+
+  const user = rows[0];
+  const ok = await bcrypt.compare(String(password), String(user.password_hash || ''));
+  if (!ok) {
+    return res.status(401).json({ ok: false, error: 'Error en la autenticación' });
+  }
+
+  // Autenticación exitosa: devolvemos mensaje + datos básicos.
+  res.json({
+    ok: true,
+    message: 'Autenticación satisfactoria',
+    user: {
+      id_usuario: user.id_usuario,
+      nombre: user.nombre,
+      correo: user.correo,
+      id_rol: user.id_rol
+    }
+  });
+}));
+
 app.get('/api/usuarios/:id', asyncHandler(async (req, res) => {
   await requireAuth(req, res, () => {});
   if (res.headersSent) return;

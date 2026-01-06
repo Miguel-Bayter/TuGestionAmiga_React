@@ -968,6 +968,51 @@ app.post('/api/admin/usuarios', requireAdmin, asyncHandler(async (req, res) => {
   });
 }));
 
+app.patch('/api/admin/usuarios/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
+
+  const { nombre, correo, password } = req.body || {};
+
+  const updates = [];
+  const values = { id };
+
+  if (nombre !== undefined) {
+    const nextName = String(nombre || '').trim();
+    if (!nextName) return res.status(400).json({ error: 'nombre es obligatorio' });
+    updates.push('nombre = :nombre');
+    values.nombre = nextName;
+  }
+
+  if (correo !== undefined) {
+    const email = String(correo || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'correo es obligatorio' });
+    const [exists] = await pool.query(
+      'SELECT 1 FROM usuario WHERE LOWER(TRIM(correo)) = :correo AND id_usuario <> :id LIMIT 1',
+      { correo: email, id }
+    );
+    if (exists.length) return res.status(409).json({ error: 'El correo ya está registrado' });
+    updates.push('correo = :correo');
+    values.correo = email;
+  }
+
+  if (password !== undefined && String(password) !== '') {
+    const hash = await bcrypt.hash(String(password), 10);
+    updates.push('`contraseña` = :hash');
+    values.hash = hash;
+  }
+
+  if (!updates.length) return res.status(400).json({ error: 'Sin cambios' });
+
+  const [result] = await pool.query(
+    `UPDATE usuario SET ${updates.join(', ')} WHERE id_usuario = :id`,
+    values
+  );
+
+  if (!result?.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json({ ok: true });
+}));
+
 // Cambiar rol de usuario (admin):
 // - Valida que el rol exista.
 // - Regla: un administrador no puede cambiar su propio rol a USUARIO.
@@ -985,6 +1030,39 @@ app.patch('/api/admin/usuarios/:id/rol', requireAdmin, asyncHandler(async (req, 
 
   const [result] = await pool.query('UPDATE usuario SET id_rol = :id_rol WHERE id_usuario = :id', { id_rol: rid, id });
   if (!result?.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/usuarios/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
+
+  if (Number(req.auth?.id_usuario) === id) {
+    return res.status(403).json({ error: 'No puedes eliminar tu propio usuario' });
+  }
+
+  const [hasLoans] = await pool.query('SELECT 1 FROM prestamo WHERE id_usuario = :id LIMIT 1', { id });
+  if (hasLoans.length) return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene préstamos' });
+
+  const [hasBuys] = await pool.query('SELECT 1 FROM compra WHERE id_usuario = :id LIMIT 1', { id });
+  if (hasBuys.length) return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene compras' });
+
+  try {
+    await pool.query('DELETE FROM carrito_item WHERE id_usuario = :id', { id });
+  } catch {
+  }
+
+  try {
+    const [result] = await pool.query('DELETE FROM usuario WHERE id_usuario = :id', { id });
+    if (!result?.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado' });
+  } catch (e) {
+    const code = String(e?.code || '');
+    if (code.includes('ER_ROW_IS_REFERENCED')) {
+      return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene movimientos asociados' });
+    }
+    throw e;
+  }
+
   res.json({ ok: true });
 }));
 

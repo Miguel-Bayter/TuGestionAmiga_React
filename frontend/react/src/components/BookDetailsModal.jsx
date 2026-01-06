@@ -284,6 +284,16 @@ export default function BookDetailsModal({ open, onClose, book }) {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                    <span className="font-semibold text-gray-900">Stock compra:</span>
+                    <span className="text-gray-700">{Number.isFinite(stockCompra) ? stockCompra : '-'}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                    <span className="font-semibold text-gray-900">Stock préstamo:</span>
+                    <span className="text-gray-700">{Number.isFinite(stockRenta) ? stockRenta : '-'}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
                     <span className="font-semibold text-gray-900">Cantidad:</span>
                     <input
                       type="number"

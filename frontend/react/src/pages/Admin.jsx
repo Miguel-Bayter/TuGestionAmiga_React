@@ -49,6 +49,10 @@ export default function Admin() {
   const [newUserForm, setNewUserForm] = useState({ nombre: '', correo: '', password: '', id_rol: 2 });
   const [creatingUser, setCreatingUser] = useState(false);
 
+  const [editUserForm, setEditUserForm] = useState({ id_usuario: null, nombre: '', correo: '', password: '' });
+  const [savingUser, setSavingUser] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState(null);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -90,6 +94,82 @@ export default function Admin() {
       setError(e?.message || 'No se pudo crear el usuario.');
     } finally {
       setCreatingUser(false);
+    }
+  };
+
+  const onEditUser = (u) => {
+    resetMessages();
+    setTab('usuarios');
+    setEditUserForm({
+      id_usuario: u?.id_usuario ?? null,
+      nombre: String(u?.nombre || ''),
+      correo: String(u?.correo || ''),
+      password: ''
+    });
+  };
+
+  const onCancelEditUser = () => {
+    resetMessages();
+    setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+  };
+
+  const onSaveUser = async () => {
+    resetMessages();
+    const id = Number(editUserForm.id_usuario);
+    if (!Number.isFinite(id)) return;
+
+    const payload = {
+      nombre: String(editUserForm.nombre || '').trim(),
+      correo: String(editUserForm.correo || '').trim()
+    };
+
+    const pwd = String(editUserForm.password || '');
+    if (pwd) payload.password = pwd;
+
+    if (!payload.nombre || !payload.correo) {
+      setError('Nombre y correo son obligatorios.');
+      return;
+    }
+
+    setSavingUser(true);
+    try {
+      await apiFetch(`/api/admin/usuarios/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      setSuccess('Usuario actualizado.');
+      setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+      await loadAll(loanQuery);
+    } catch (e) {
+      setError(e?.message || 'No se pudo actualizar el usuario.');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const onDeleteUser = async (u) => {
+    resetMessages();
+    const id = Number(u?.id_usuario);
+    if (!Number.isFinite(id)) return;
+
+    const ok = window.confirm(`¿Eliminar el usuario "${String(u?.nombre || '').trim() || 'sin nombre'}"?`);
+    if (!ok) return;
+
+    setDeletingUserId(id);
+    try {
+      await apiFetch(`/api/admin/usuarios/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      setSuccess('Usuario eliminado.');
+      if (Number(editUserForm.id_usuario) === id) {
+        setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
+      }
+      await loadAll(loanQuery);
+    } catch (e) {
+      setError(e?.message || 'No se pudo eliminar el usuario.');
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -525,6 +605,21 @@ export default function Admin() {
                           >
                             ADMIN
                           </button>
+                          <button
+                            type="button"
+                            className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
+                            onClick={() => onEditUser(u)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingUserId === Number(u.id_usuario)}
+                            className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                            onClick={() => onDeleteUser(u)}
+                          >
+                            Eliminar
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -543,69 +638,121 @@ export default function Admin() {
 
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Crear usuario</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{editUserForm.id_usuario ? 'Editar usuario' : 'Crear usuario'}</h2>
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="form-label">Nombre</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={newUserForm.nombre}
-                  onChange={(e) => setNewUserForm((v) => ({ ...v, nombre: e.target.value }))}
-                />
-              </div>
+            {editUserForm.id_usuario ? (
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="form-label">Nombre</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editUserForm.nombre}
+                    onChange={(e) => setEditUserForm((v) => ({ ...v, nombre: e.target.value }))}
+                  />
+                </div>
 
-              <div>
-                <label className="form-label">Correo</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  value={newUserForm.correo}
-                  onChange={(e) => setNewUserForm((v) => ({ ...v, correo: e.target.value }))}
-                />
-              </div>
+                <div>
+                  <label className="form-label">Correo</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={editUserForm.correo}
+                    onChange={(e) => setEditUserForm((v) => ({ ...v, correo: e.target.value }))}
+                  />
+                </div>
 
-              <div>
-                <label className="form-label">Contraseña</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  value={newUserForm.password}
-                  onChange={(e) => setNewUserForm((v) => ({ ...v, password: e.target.value }))}
-                />
-              </div>
+                <div>
+                  <label className="form-label">Contraseña (opcional)</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    value={editUserForm.password}
+                    onChange={(e) => setEditUserForm((v) => ({ ...v, password: e.target.value }))}
+                  />
+                </div>
 
-              <div>
-                <label className="form-label">Rol</label>
-                <select
-                  className="form-input"
-                  value={String(newUserForm.id_rol)}
-                  onChange={(e) => setNewUserForm((v) => ({ ...v, id_rol: Number(e.target.value) }))}
-                >
-                  <option value="2">USUARIO</option>
-                  <option value="1">ADMIN</option>
-                </select>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                    onClick={onCancelEditUser}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingUser}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    onClick={onSaveUser}
+                  >
+                    Guardar
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="form-label">Nombre</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={newUserForm.nombre}
+                    onChange={(e) => setNewUserForm((v) => ({ ...v, nombre: e.target.value }))}
+                  />
+                </div>
 
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                  onClick={() => setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 })}
-                >
-                  Limpiar
-                </button>
-                <button
-                  type="button"
-                  disabled={creatingUser}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  onClick={onCreateUser}
-                >
-                  Crear
-                </button>
+                <div>
+                  <label className="form-label">Correo</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={newUserForm.correo}
+                    onChange={(e) => setNewUserForm((v) => ({ ...v, correo: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Contraseña</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    value={newUserForm.password}
+                    onChange={(e) => setNewUserForm((v) => ({ ...v, password: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Rol</label>
+                  <select
+                    className="form-input"
+                    value={String(newUserForm.id_rol)}
+                    onChange={(e) => setNewUserForm((v) => ({ ...v, id_rol: Number(e.target.value) }))}
+                  >
+                    <option value="2">USUARIO</option>
+                    <option value="1">ADMIN</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                    onClick={() => setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 })}
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={creatingUser}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    onClick={onCreateUser}
+                  >
+                    Crear
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       ) : null}

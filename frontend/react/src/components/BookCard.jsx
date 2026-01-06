@@ -40,10 +40,10 @@ export default function BookCard({ book, onOpenDetails, mode }) {
 
   // En algunos scripts SQL existe `stock`, pero si no está, mantenemos el comportamiento original.
   const stockValue =
-    typeof book?.stock === 'number' || Number.isFinite(Number(book?.stock))
-      ? Number(book.stock)
-      : hasSplitStock
-        ? (Number.isFinite(stockCompra) ? stockCompra : 0) + (Number.isFinite(stockRenta) ? stockRenta : 0)
+    hasSplitStock
+      ? (Number.isFinite(stockCompra) ? stockCompra : 0) + (Number.isFinite(stockRenta) ? stockRenta : 0)
+      : typeof book?.stock === 'number' || Number.isFinite(Number(book?.stock))
+        ? Number(book.stock)
         : isAvailable
           ? 1
           : 0;

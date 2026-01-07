@@ -15,7 +15,8 @@
     - Ver préstamos registrados.
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiFetch } from '../lib/api.js';
 import { getStoredUser } from '../lib/auth.js';
 
@@ -37,6 +38,33 @@ export default function Admin() {
   // - Controla qué sección del panel se ve (libros/usuarios/préstamos).
   const [tab, setTab] = useState('libros');
 
+  const location = useLocation();
+
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(location.search || '');
+      const t = sp.get('tab');
+      if (t === 'libros' || t === 'usuarios' || t === 'prestamos') {
+        setTab(t);
+      }
+    } catch {
+      // ignore
+    }
+  }, [location.search]);
+
+  const formatDateOnly = (value) => {
+    if (!value) return '-';
+    const s = String(value);
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return s;
+  };
+
+  const bookFormRef = useRef(null);
+  const userFormRef = useRef(null);
+
   const [books, setBooks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loans, setLoans] = useState([]);
@@ -45,6 +73,7 @@ export default function Admin() {
   const [bookForm, setBookForm] = useState(emptyBook);
   const [showBookForm, setShowBookForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingBookId, setDeletingBookId] = useState(null);
 
   const [loanQuery, setLoanQuery] = useState('');
 
@@ -241,6 +270,36 @@ export default function Admin() {
     if (tab !== 'usuarios') setShowUserForm(false);
   }, [tab]);
 
+  useEffect(() => {
+    if (!showBookForm || tab !== 'libros') return;
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+
+    const el = bookFormRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }, [showBookForm, tab]);
+
+  useEffect(() => {
+    if (!showUserForm || tab !== 'usuarios') return;
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+
+    const el = userFormRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }, [showUserForm, tab]);
+
   const categoryNameById = useMemo(() => {
     // Mapa auxiliar para mostrar nombre de categoría en la tabla de libros.
     // Evita hacer búsquedas O(n) dentro del render de cada fila.
@@ -285,16 +344,46 @@ export default function Admin() {
     setBookForm({ ...emptyBook });
   };
 
+  const onDeleteBook = async (row) => {
+    resetMessages();
+    const id = Number(row?.id_libro);
+    if (!Number.isFinite(id)) return;
+
+    const title = String(row?.titulo || '').trim() || 'sin título';
+    const ok = window.confirm(`¿Eliminar el libro "${title}"?`);
+    if (!ok) return;
+
+    setDeletingBookId(id);
+    try {
+      await apiFetch(`/api/admin/libros/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      setSuccess('Libro eliminado.');
+      if (Number(bookForm.id_libro) === id) {
+        setShowBookForm(false);
+        setBookForm({ ...emptyBook });
+      }
+      await loadAll(loanQuery);
+    } catch (e) {
+      setError(e?.message || 'No se pudo eliminar el libro.');
+    } finally {
+      setDeletingBookId(null);
+    }
+  };
+
   const onSaveBook = async () => {
     resetMessages();
+
+    const stockCompra = Number(bookForm.stock_compra);
+    const stockRenta = Number(bookForm.stock_renta);
 
     const payload = {
       titulo: String(bookForm.titulo || '').trim(),
       autor: String(bookForm.autor || '').trim(),
       descripcion: String(bookForm.descripcion || ''),
-      stock: Number(bookForm.stock),
-      stock_compra: Number(bookForm.stock_compra),
-      stock_renta: Number(bookForm.stock_renta),
+      stock: stockCompra + stockRenta,
+      stock_compra: stockCompra,
+      stock_renta: stockRenta,
       valor: Number(bookForm.valor),
       id_categoria: bookForm.id_categoria === '' ? null : Number(bookForm.id_categoria)
     };
@@ -303,11 +392,6 @@ export default function Admin() {
     // El backend igual valida campos obligatorios.
     if (!payload.titulo || !payload.autor) {
       setError('Título y autor son obligatorios.');
-      return;
-    }
-
-    if (!Number.isFinite(payload.stock) || payload.stock < 0) {
-      setError('Stock inválido.');
       return;
     }
 
@@ -436,7 +520,7 @@ export default function Admin() {
       </div>
 
       {tab === 'libros' ? (
-        <div className={`grid grid-cols-1 gap-6 ${showBookForm ? 'lg:grid-cols-[1.2fr_0.8fr]' : ''}`}>
+        <div className={`grid grid-cols-1 gap-6 ${showBookForm ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]' : ''}`}>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">Libros</h2>
@@ -444,40 +528,213 @@ export default function Admin() {
                 Nuevo
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+            <div className="lg:hidden">
+              {(books || []).map((b) => (
+                <div key={b.id_libro} className="border-t border-gray-200 p-4">
+                  <div className="min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <p title={String(b?.titulo || '-')} className="min-w-0 text-sm font-semibold text-gray-900 truncate">
+                        {b?.titulo || '-'}
+                      </p>
+                      <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                        {Number(b?.disponibilidad) === 1 ? 'Disponible' : 'No disponible'}
+                      </span>
+                    </div>
+                    <p title={String(b?.autor || '-')} className="mt-1 text-xs text-gray-500 truncate">
+                      {b?.autor || '-'}
+                    </p>
+                    <p
+                      title={
+                        b?.id_categoria != null ? String(categoryNameById.get(String(b.id_categoria)) || '-') : '-'
+                      }
+                      className="mt-1 text-xs text-gray-500 truncate"
+                    >
+                      {b?.id_categoria != null ? categoryNameById.get(String(b.id_categoria)) || '-' : '-'}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-700">
+                      <p>
+                        <span className="font-semibold text-gray-900">Compra:</span> {Number(b?.stock_compra ?? b?.stock ?? 0)}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-gray-900">Renta:</span> {Number(b?.stock_renta ?? b?.stock ?? 0)}
+                      </p>
+                      <p className="col-span-2">
+                        <span className="font-semibold text-gray-900">Precio:</span> {Number(b?.valor ?? 0)}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200"
+                        onClick={() => onEditBook(b)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingBookId === Number(b.id_libro)}
+                        className={
+                          deletingBookId === Number(b.id_libro)
+                            ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
+                            : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                        }
+                        onClick={() => onDeleteBook(b)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {Array.isArray(books) && books.length === 0 ? <p className="px-6 py-4 text-sm text-gray-500">No hay libros.</p> : null}
+            </div>
+            <div className="hidden lg:block overflow-hidden">
+              <table
+                className={
+                  showBookForm
+                    ? 'w-full table-fixed divide-y divide-gray-200 text-xs leading-tight'
+                    : 'w-full table-fixed divide-y divide-gray-200'
+                }
+              >
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Título</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Autor</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Compra</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Renta</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Disp.</th>
-                    <th className="px-6 py-3" />
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Título
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Autor
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'hidden 2xl:table-cell px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight'
+                          : 'hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Categoría
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight whitespace-normal'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Stock compra
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight whitespace-normal'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Stock renta
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Precio
+                    </th>
+                    <th
+                      className={
+                        showBookForm
+                          ? 'px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase leading-tight'
+                          : 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
+                      }
+                    >
+                      Disp.
+                    </th>
+                    <th className={`px-4 py-3 pr-16 ${showBookForm ? 'w-48' : 'w-40'}`} />
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(books || []).map((b) => (
                     <tr key={b.id_libro}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{b?.titulo || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{b?.autor || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td
+                        title={String(b?.titulo || '-')}
+                        className={
+                          showBookForm
+                            ? 'px-3 py-3 text-xs font-semibold text-gray-900 truncate'
+                            : 'px-4 py-4 text-sm font-medium text-gray-900 truncate'
+                        }
+                      >
+                        {b?.titulo || '-'}
+                      </td>
+                      <td
+                        title={String(b?.autor || '-')}
+                        className={
+                          showBookForm
+                            ? 'px-3 py-3 text-xs text-gray-600 truncate'
+                            : 'px-4 py-4 text-sm text-gray-600 truncate'
+                        }
+                      >
+                        {b?.autor || '-'}
+                      </td>
+                      <td
+                        className={
+                          showBookForm
+                            ? 'hidden 2xl:table-cell px-3 py-3 text-xs text-gray-600 truncate'
+                            : 'hidden xl:table-cell px-4 py-4 text-sm text-gray-600 truncate'
+                        }
+                        title={
+                          b?.id_categoria != null ? String(categoryNameById.get(String(b.id_categoria)) || '-') : '-'
+                        }
+                      >
                         {b?.id_categoria != null ? categoryNameById.get(String(b.id_categoria)) || '-' : '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(b?.stock_compra ?? b?.stock ?? 0)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(b?.stock_renta ?? b?.stock ?? 0)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(b?.valor ?? 0)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(b?.disponibilidad) === 1 ? 'Sí' : 'No'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <button
-                          type="button"
-                          className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
-                          onClick={() => onEditBook(b)}
-                        >
-                          Editar
-                        </button>
+                      <td className={showBookForm ? 'px-3 py-3 whitespace-nowrap text-xs text-gray-600' : 'px-4 py-4 whitespace-nowrap text-sm text-gray-600'}>
+                        {Number(b?.stock_compra ?? b?.stock ?? 0)}
+                      </td>
+                      <td className={showBookForm ? 'px-3 py-3 whitespace-nowrap text-xs text-gray-600' : 'px-4 py-4 whitespace-nowrap text-sm text-gray-600'}>
+                        {Number(b?.stock_renta ?? b?.stock ?? 0)}
+                      </td>
+                      <td className={showBookForm ? 'px-3 py-3 whitespace-nowrap text-xs text-gray-600' : 'px-4 py-4 whitespace-nowrap text-sm text-gray-600'}>
+                        {Number(b?.valor ?? 0)}
+                      </td>
+                      <td className={showBookForm ? 'px-3 py-3 whitespace-nowrap text-xs text-gray-600' : 'px-4 py-4 whitespace-nowrap text-sm text-gray-600'}>
+                        {Number(b?.disponibilidad) === 1 ? 'Sí' : 'No'}
+                      </td>
+                      <td className={`px-4 py-4 pr-16 whitespace-nowrap ${showBookForm ? 'text-center' : 'text-right'}`}>
+                        <div className={`inline-flex flex-wrap items-center gap-2 ${showBookForm ? 'justify-center' : 'justify-end'}`}>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200"
+                            onClick={() => onEditBook(b)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingBookId === Number(b.id_libro)}
+                            className={
+                              deletingBookId === Number(b.id_libro)
+                                ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
+                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                            }
+                            onClick={() => onDeleteBook(b)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -494,7 +751,7 @@ export default function Admin() {
           </div>
 
           {showBookForm ? (
-            <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div ref={bookFormRef} className="bg-white shadow rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">{bookForm.id_libro ? 'Editar libro' : 'Nuevo libro'}</h2>
                 <button
@@ -541,16 +798,6 @@ export default function Admin() {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="form-label">Stock total (legacy)</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={bookForm.stock}
-                    onChange={(e) => setBookForm((v) => ({ ...v, stock: e.target.value }))}
-                  />
                 </div>
 
                 <div>
@@ -617,7 +864,7 @@ export default function Admin() {
       ) : null}
 
       {tab === 'usuarios' ? (
-        <div className={`grid grid-cols-1 gap-6 ${showUserForm ? 'lg:grid-cols-[1.2fr_0.8fr]' : ''}`}>
+        <div className={`grid grid-cols-1 gap-6 ${showUserForm ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]' : ''}`}>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">Usuarios</h2>
@@ -625,38 +872,34 @@ export default function Admin() {
                 Nuevo
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Correo</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rol</th>
-                    <th className="px-6 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {(users || []).map((u) => (
-                    (() => {
-                      const roleId = Number(u?.id_rol);
-                      const isUserRole = roleId === 2;
-                      const isAdminRole = roleId === 1;
-                      return (
-                    <tr key={u.id_usuario}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u?.nombre || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{u?.correo || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {u?.nombre_rol || (u?.id_rol ? String(u.id_rol) : '-')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="inline-flex items-center gap-2">
+            <div className="lg:hidden">
+              {(users || []).map((u) => {
+                const roleId = Number(u?.id_rol);
+                const isUserRole = roleId === 2;
+                const isAdminRole = roleId === 1;
+
+                return (
+                  <div key={u.id_usuario} className="border-t border-gray-200 p-4">
+                    <div className="min-w-0">
+                      <p title={String(u?.nombre || '-')} className="text-sm font-semibold text-gray-900 truncate">
+                        {u?.nombre || '-'}
+                      </p>
+                      <p title={String(u?.correo || '-')} className="mt-1 text-xs text-gray-500 truncate">
+                        {u?.correo || '-'}
+                      </p>
+                      <p className="mt-2 text-sm text-gray-700">
+                        <span className="font-semibold text-gray-900">Rol:</span> {u?.nombre_rol || (u?.id_rol ? String(u.id_rol) : '-')}
+                      </p>
+
+                      <div className="mt-3 flex flex-col items-end gap-2">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <button
                             type="button"
                             disabled={isUserRole}
                             className={
                               isUserRole
-                                ? 'rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-400'
-                                : 'rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300'
+                                ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200'
                             }
                             onClick={() => (isUserRole ? null : onSetUserRole(u.id_usuario, 2))}
                           >
@@ -667,16 +910,19 @@ export default function Admin() {
                             disabled={isAdminRole}
                             className={
                               isAdminRole
-                                ? 'rounded-lg bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-400'
-                                : 'rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700'
+                                ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-indigo-100 px-3 text-xs font-semibold text-indigo-400'
+                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700'
                             }
                             onClick={() => (isAdminRole ? null : onSetUserRole(u.id_usuario, 1))}
                           >
                             ADMIN
                           </button>
+                        </div>
+
+                        <div className="flex flex-wrap justify-end gap-2">
                           <button
                             type="button"
-                            className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-300"
+                            className="inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200"
                             onClick={() => onEditUser(u)}
                           >
                             Editar
@@ -684,16 +930,100 @@ export default function Admin() {
                           <button
                             type="button"
                             disabled={deletingUserId === Number(u.id_usuario)}
-                            className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                            className={
+                              deletingUserId === Number(u.id_usuario)
+                                ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
+                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                            }
                             onClick={() => onDeleteUser(u)}
                           >
                             Eliminar
                           </button>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {Array.isArray(users) && users.length === 0 ? <p className="px-6 py-4 text-sm text-gray-500">No hay usuarios.</p> : null}
+            </div>
+
+            <div className="hidden lg:block overflow-hidden">
+              <table className="w-full table-fixed divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Correo</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rol</th>
+                    <th className={`px-6 py-3 ${showUserForm ? 'w-56' : ''}`} />
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(users || []).map((u) => (
+                    <tr key={u.id_usuario}>
+                      <td title={String(u?.nombre || '-')} className="px-6 py-4 text-sm text-gray-900 truncate">
+                        {u?.nombre || '-'}
+                      </td>
+                      <td title={String(u?.correo || '-')} className="px-6 py-4 text-sm text-gray-600 truncate">
+                        {u?.correo || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {u?.nombre_rol || (u?.id_rol ? String(u.id_rol) : '-')}
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap ${showUserForm ? 'text-center' : 'text-right'}`}>
+                        <div className="inline-flex flex-col items-end gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={u.id_rol === 2}
+                              className={
+                                u.id_rol === 2
+                                  ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200'
+                              }
+                              onClick={() => onSetUserRole(u.id_usuario, 2)}
+                            >
+                              USUARIO
+                            </button>
+                            <button
+                              type="button"
+                              disabled={u.id_rol === 1}
+                              className={
+                                u.id_rol === 1
+                                  ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-indigo-100 px-3 text-xs font-semibold text-indigo-400'
+                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700'
+                              }
+                              onClick={() => onSetUserRole(u.id_usuario, 1)}
+                            >
+                              ADMIN
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              className="inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-800 hover:bg-gray-200"
+                              onClick={() => onEditUser(u)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingUserId === Number(u.id_usuario)}
+                              className={
+                                deletingUserId === Number(u.id_usuario)
+                                  ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
+                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                              }
+                              onClick={() => onDeleteUser(u)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
                       </td>
                     </tr>
-                      );
-                    })()
                   ))}
                   {Array.isArray(users) && users.length === 0 ? (
                     <tr>
@@ -708,7 +1038,7 @@ export default function Admin() {
           </div>
 
           {showUserForm ? (
-            <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div ref={userFormRef} className="bg-white shadow rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">{editUserForm.id_usuario ? 'Editar usuario' : 'Crear usuario'}</h2>
                 <button
@@ -751,10 +1081,10 @@ export default function Admin() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
                     <button
                       type="button"
-                      className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                      className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 w-full sm:w-auto"
                       onClick={onCancelEditUser}
                     >
                       Cancelar
@@ -762,7 +1092,7 @@ export default function Admin() {
                     <button
                       type="button"
                       disabled={savingUser}
-                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 w-full sm:w-auto"
                       onClick={onSaveUser}
                     >
                       Guardar
@@ -813,10 +1143,10 @@ export default function Admin() {
                     </select>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
                     <button
                       type="button"
-                      className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                      className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 w-full sm:w-auto"
                       onClick={() => setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 })}
                     >
                       Limpiar
@@ -824,7 +1154,7 @@ export default function Admin() {
                     <button
                       type="button"
                       disabled={creatingUser}
-                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 w-full sm:w-auto"
                       onClick={onCreateUser}
                     >
                       Crear
@@ -838,28 +1168,76 @@ export default function Admin() {
       ) : null}
 
       {tab === 'prestamos' ? (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Préstamos</h2>
-            <div className="mt-3 flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                className="form-input"
-                value={loanQuery}
-                placeholder="Buscar por nombre o correo"
-                onChange={(e) => setLoanQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-                onClick={onSearchLoans}
-              >
-                Buscar
-              </button>
+        <div className="space-y-4">
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Préstamos</h2>
+              <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={loanQuery}
+                  placeholder="Buscar por nombre o correo"
+                  onChange={(e) => setLoanQuery(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                  onClick={onSearchLoans}
+                >
+                  Buscar
+                </button>
+              </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="lg:hidden">
+            {(loans || []).map((p) => (
+              <div key={p.id_prestamo} className="border-t border-gray-200 p-4">
+                <div className="min-w-0">
+                  <p title={String(p?.titulo || '-')} className="text-sm font-semibold text-gray-900 truncate">
+                    {p?.titulo || '-'}
+                  </p>
+                  <p title={String(p?.nombre || p?.correo || '-')} className="mt-1 text-xs text-gray-500 truncate">
+                    {p?.nombre || p?.correo || '-'}
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                    <p>
+                      <span className="font-semibold text-gray-900">Préstamo:</span> {formatDateOnly(p?.fecha_prestamo)}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-900">Devolución:</span> {formatDateOnly(p?.fecha_devolucion)}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-900">Estado:</span> {p?.estado || '-'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-900">Ext.:</span> {Number(p?.extensiones ?? 0)}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    {String(p?.estado || '').toLowerCase().includes('activo') ? (
+                      <button
+                        type="button"
+                        className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                        onClick={() => onReturnLoan(p)}
+                      >
+                        Registrar devolución
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-500">-</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {Array.isArray(loans) && loans.length === 0 ? <p className="px-6 py-4 text-sm text-gray-500">No hay préstamos.</p> : null}
+          </div>
+
+          <div className="hidden lg:block overflow-hidden">
+            <table className="w-full table-fixed divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Libro</th>
@@ -874,10 +1252,14 @@ export default function Admin() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {(loans || []).map((p) => (
                   <tr key={p.id_prestamo}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{p?.titulo || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{p?.nombre || p?.correo || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{p?.fecha_prestamo || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{p?.fecha_devolucion || '-'}</td>
+                    <td title={String(p?.titulo || '-')} className="px-6 py-4 text-sm text-gray-900 truncate">
+                      {p?.titulo || '-'}
+                    </td>
+                    <td title={String(p?.nombre || p?.correo || '-')} className="px-6 py-4 text-sm text-gray-600 truncate">
+                      {p?.nombre || p?.correo || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDateOnly(p?.fecha_prestamo)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDateOnly(p?.fecha_devolucion)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{p?.estado || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(p?.extensiones ?? 0)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">

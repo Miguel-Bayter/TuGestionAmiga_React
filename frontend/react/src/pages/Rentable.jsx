@@ -70,18 +70,18 @@ export default function Rentable() {
   return (
     <div>
       <div className="mb-6">
-        <div className="relative">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             placeholder="Buscar libros disponibles"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full p-4 pl-10 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-4 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
           />
           <button
             type="button"
             onClick={() => load()}
-            className="text-white absolute right-2.5 bottom-2.5 bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-4 py-2"
+            className="text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-4 py-3 sm:py-2 w-full sm:w-auto"
           >
             Buscar
           </button>

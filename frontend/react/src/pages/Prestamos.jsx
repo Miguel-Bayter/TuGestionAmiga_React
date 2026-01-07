@@ -79,117 +79,196 @@ export default function Prestamos() {
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Mis Préstamos</h1>
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Libro
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Fecha de Préstamo
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Fecha de Devolución
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Estado
-              </th>
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Acciones
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {error ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-4 text-sm text-gray-500">
-                  {error}
-                </td>
-              </tr>
-            ) : null}
+        <div className="lg:hidden">
+          {error ? <p className="px-4 py-4 text-sm text-gray-500">{error}</p> : null}
 
-            {!error && rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-4 text-sm text-gray-500">
-                  No tienes préstamos todavía.
-                </td>
-              </tr>
-            ) : null}
+          {!error && rows.length === 0 ? <p className="px-4 py-4 text-sm text-gray-500">No tienes préstamos todavía.</p> : null}
 
-            {rows.map((row) => {
-              const estado = String(row?.estado || '').toLowerCase();
-              const badgeClass = estado.includes('activo')
-                ? 'bg-green-100 text-green-800'
-                : estado.includes('venc')
-                  ? 'bg-red-100 text-red-800'
-                  : 'bg-gray-100 text-gray-800';
+          {(rows || []).map((row) => {
+            const estado = String(row?.estado || '').toLowerCase();
+            const badgeClass = estado.includes('activo')
+              ? 'bg-green-100 text-green-800'
+              : estado.includes('venc')
+                ? 'bg-red-100 text-red-800'
+                : 'bg-gray-100 text-gray-800';
 
-              const ext = Number(row?.extensiones) || 0;
-              const canExtend = estado.includes('activo') && ext < 2;
+            const ext = Number(row?.extensiones) || 0;
+            const canExtend = estado.includes('activo') && ext < 2;
 
-              const imgSrc = getLocalCoverUrl(row?.titulo) || createCoverDataUri(row?.titulo);
+            const imgSrc = getLocalCoverUrl(row?.titulo) || createCoverDataUri(row?.titulo);
 
-              return (
-                <tr key={row.id_prestamo}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <img
-                          className="h-10 w-10 rounded-full"
-                          alt=""
-                          src={imgSrc}
-                          onError={(ev) => {
-                            ev.currentTarget.onerror = null;
-                            ev.currentTarget.src = createCoverDataUri(row?.titulo);
-                          }}
-                        />
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{row?.titulo || 'Sin título'}</div>
-                        <div className="text-sm text-gray-500">{row?.autor || 'Autor desconocido'}</div>
-                      </div>
+            return (
+              <div key={row.id_prestamo} className="border-t border-gray-200 p-4">
+                <div className="flex items-start gap-3">
+                  <img
+                    className="h-12 w-12 rounded-xl flex-shrink-0"
+                    alt=""
+                    src={imgSrc}
+                    onError={(ev) => {
+                      ev.currentTarget.onerror = null;
+                      ev.currentTarget.src = createCoverDataUri(row?.titulo);
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p title={String(row?.titulo || 'Sin título')} className="min-w-0 text-sm font-semibold text-gray-900 truncate">
+                        {row?.titulo || 'Sin título'}
+                      </p>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${badgeClass}`}>
+                        {(row?.estado || 'Desconocido') + (estado.includes('activo') ? ` (${ext}/2)` : '')}
+                      </span>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_prestamo)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_devolucion)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass}`}>
-                      {(row?.estado || 'Desconocido') + (estado.includes('activo') ? ` (${ext}/2)` : '')}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {canExtend ? (
-                      <button
-                        type="button"
-                        className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-                        onClick={() => onExtender(row.id_prestamo)}
-                      >
-                        Extender
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-500">-</span>
-                    )}
+
+                    <p title={String(row?.autor || 'Autor desconocido')} className="mt-1 text-xs text-gray-500 truncate">
+                      {row?.autor || 'Autor desconocido'}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                      <p>
+                        <span className="font-semibold text-gray-900">Préstamo:</span> {formatDate(row?.fecha_prestamo)}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-gray-900">Devolución:</span> {formatDate(row?.fecha_devolucion)}
+                      </p>
+                    </div>
+
+                    <div className="mt-3">
+                      {canExtend ? (
+                        <button
+                          type="button"
+                          className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                          onClick={() => onExtender(row.id_prestamo)}
+                        >
+                          Extender
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-500">-</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden lg:block overflow-hidden">
+          <table className="w-full table-fixed divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Libro
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Fecha de Préstamo
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Fecha de Devolución
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Estado
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Acciones
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {error ? (
+                <tr>
+                  <td colSpan={5} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
+                    {error}
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ) : null}
+
+              {!error && rows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
+                    No tienes préstamos todavía.
+                  </td>
+                </tr>
+              ) : null}
+
+              {(rows || []).map((row) => {
+                const estado = String(row?.estado || '').toLowerCase();
+                const badgeClass = estado.includes('activo')
+                  ? 'bg-green-100 text-green-800'
+                  : estado.includes('venc')
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-800';
+
+                const ext = Number(row?.extensiones) || 0;
+                const canExtend = estado.includes('activo') && ext < 2;
+
+                const imgSrc = getLocalCoverUrl(row?.titulo) || createCoverDataUri(row?.titulo);
+
+                return (
+                  <tr key={row.id_prestamo}>
+                    <td className="px-4 sm:px-6 py-4">
+                      <div className="flex items-center min-w-0">
+                        <div className="flex-shrink-0 h-10 w-10">
+                          <img
+                            className="h-10 w-10 rounded-full"
+                            alt=""
+                            src={imgSrc}
+                            onError={(ev) => {
+                              ev.currentTarget.onerror = null;
+                              ev.currentTarget.src = createCoverDataUri(row?.titulo);
+                            }}
+                          />
+                        </div>
+                        <div className="ml-4 min-w-0">
+                          <div title={String(row?.titulo || 'Sin título')} className="text-sm font-medium text-gray-900 truncate">
+                            {row?.titulo || 'Sin título'}
+                          </div>
+                          <div title={String(row?.autor || 'Autor desconocido')} className="text-sm text-gray-500 truncate">
+                            {row?.autor || 'Autor desconocido'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_prestamo)}</td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_devolucion)}</td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass}`}>
+                        {(row?.estado || 'Desconocido') + (estado.includes('activo') ? ` (${ext}/2)` : '')}
+                      </span>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                      {canExtend ? (
+                        <button
+                          type="button"
+                          className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                          onClick={() => onExtender(row.id_prestamo)}
+                        >
+                          Extender
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-500">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

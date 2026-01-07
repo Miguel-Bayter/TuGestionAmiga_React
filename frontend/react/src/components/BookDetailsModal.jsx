@@ -187,7 +187,7 @@ export default function BookDetailsModal({ open, onClose, book }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_usuario: user.id_usuario, id_libro: effective.id_libro, cantidad })
       });
-      navigate('/carrito');
+      window.dispatchEvent(new Event('tga_cart_updated'));
     } catch (e) {
       handleUserError(e?.message || 'No se pudo registrar la compra');
     }
@@ -399,8 +399,8 @@ export default function BookDetailsModal({ open, onClose, book }) {
                       ))}
                     </div>
 
-                    <div className="hidden sm:block overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                    <div className="hidden sm:block overflow-hidden">
+                      <table className="w-full table-fixed divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">
@@ -417,7 +417,10 @@ export default function BookDetailsModal({ open, onClose, book }) {
                         <tbody className="divide-y divide-gray-200 bg-white">
                           {history.map((row) => (
                             <tr key={row.id_prestamo}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                              <td
+                                title={String(row?.nombre || row?.correo || 'Usuario')}
+                                className="px-6 py-4 text-sm text-gray-800 truncate"
+                              >
                                 {row?.nombre || row?.correo || 'Usuario'}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">

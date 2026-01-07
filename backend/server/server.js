@@ -920,6 +920,35 @@ app.patch('/api/admin/libros/:id', requireAdmin, asyncHandler(async (req, res) =
   res.json({ ok: true });
 }));
 
+app.delete('/api/admin/libros/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
+
+  const [hasLoans] = await pool.query('SELECT 1 FROM prestamo WHERE id_libro = :id LIMIT 1', { id });
+  if (hasLoans.length) return res.status(409).json({ error: 'No se puede eliminar: el libro tiene préstamos' });
+
+  const [hasBuys] = await pool.query('SELECT 1 FROM compra WHERE id_libro = :id LIMIT 1', { id });
+  if (hasBuys.length) return res.status(409).json({ error: 'No se puede eliminar: el libro tiene compras' });
+
+  try {
+    await pool.query('DELETE FROM carrito_item WHERE id_libro = :id', { id });
+  } catch {
+  }
+
+  try {
+    const [result] = await pool.query('DELETE FROM libro WHERE id_libro = :id', { id });
+    if (!result?.affectedRows) return res.status(404).json({ error: 'Libro no encontrado' });
+  } catch (e) {
+    const code = String(e?.code || '');
+    if (code.includes('ER_ROW_IS_REFERENCED')) {
+      return res.status(409).json({ error: 'No se puede eliminar: el libro tiene movimientos asociados' });
+    }
+    throw e;
+  }
+
+  res.json({ ok: true });
+}));
+
 // Usuarios (admin):
 // - Se listan con su rol (JOIN a la tabla rol).
 app.get('/api/admin/usuarios', requireAdmin, asyncHandler(async (req, res) => {
@@ -1315,6 +1344,63 @@ app.get('/api/usuarios/:id', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'No autorizado' });
   }
 
+  const [rows] = await pool.query(
+    'SELECT id_usuario, nombre, correo, id_rol FROM usuario WHERE id_usuario = :id LIMIT 1',
+    { id }
+  );
+
+  if (!rows.length) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json(rows[0]);
+}));
+
+// Actualizar datos básicos del usuario:
+// - Permite editar únicamente nombre/correo.
+// - Reglas de acceso: solo el propio usuario (o un admin) puede actualizar.
+// - Se valida correo único para evitar duplicados en la tabla usuario.
+app.patch('/api/usuarios/:id', asyncHandler(async (req, res) => {
+  await requireAuth(req, res, () => {});
+  if (res.headersSent) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
+
+  if (!assertSelfOrAdmin(req, res, id)) {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
+
+  const { nombre, correo } = req.body || {};
+  const updates = [];
+  const values = { id };
+
+  if (nombre !== undefined) {
+    const nextName = String(nombre || '').trim();
+    if (!nextName) return res.status(400).json({ error: 'nombre es obligatorio' });
+    updates.push('nombre = :nombre');
+    values.nombre = nextName;
+  }
+
+  if (correo !== undefined) {
+    const email = String(correo || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'correo es obligatorio' });
+    const [exists] = await pool.query(
+      'SELECT 1 FROM usuario WHERE LOWER(TRIM(correo)) = :correo AND id_usuario <> :id LIMIT 1',
+      { correo: email, id }
+    );
+    if (exists.length) return res.status(409).json({ error: 'El correo ya está registrado' });
+    updates.push('correo = :correo');
+    values.correo = email;
+  }
+
+  if (!updates.length) return res.status(400).json({ error: 'Sin cambios' });
+
+  const [result] = await pool.query(
+    `UPDATE usuario SET ${updates.join(', ')} WHERE id_usuario = :id`,
+    values
+  );
+
+  if (!result?.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  // Devolvemos la versión actualizada para que el frontend pueda refrescar estado/localStorage.
   const [rows] = await pool.query(
     'SELECT id_usuario, nombre, correo, id_rol FROM usuario WHERE id_usuario = :id LIMIT 1',
     { id }

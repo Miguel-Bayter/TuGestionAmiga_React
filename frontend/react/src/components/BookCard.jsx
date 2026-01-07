@@ -107,7 +107,7 @@ export default function BookCard({ book, onOpenDetails, mode }) {
           cantidad
         })
       });
-      navigate('/carrito');
+      window.dispatchEvent(new Event('tga_cart_updated'));
     } catch (e) {
       handleCompraError(e?.message || 'No se pudo registrar la compra');
     }

@@ -13,12 +13,12 @@
   - Envuelve pantallas dentro de Layout para mantener el diseño consistente.
 */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import RequireAdmin from './components/RequireAdmin.jsx';
-import { getStoredUser } from './lib/auth.js';
+import { getStoredUser, subscribeAuth } from './lib/auth.js';
 import Dashboard from './pages/Dashboard.jsx';
 import Prestamos from './pages/Prestamos.jsx';
 import Cuenta from './pages/Cuenta.jsx';
@@ -29,7 +29,11 @@ import Ayuda from './pages/Ayuda.jsx';
 import Admin from './pages/Admin.jsx';
 
 export default function App() {
-  const user = getStoredUser();
+  const [user, setUser] = useState(() => getStoredUser());
+
+  useEffect(() => {
+    return subscribeAuth((next) => setUser(next));
+  }, []);
 
   return (
     <Routes>
@@ -52,18 +56,33 @@ export default function App() {
       <Route
         path="/rentable"
         element={
-          <Layout>
-            <Dashboard />
-          </Layout>
+          <RequireAuth>
+            <Layout>
+              <Dashboard />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/buscar"
+        element={
+          <RequireAuth>
+            <Layout>
+              <Dashboard />
+            </Layout>
+          </RequireAuth>
         }
       />
 
       <Route
         path="/ayuda"
         element={
-          <Layout>
-            <Ayuda />
-          </Layout>
+          <RequireAuth>
+            <Layout>
+              <Ayuda />
+            </Layout>
+          </RequireAuth>
         }
       />
 

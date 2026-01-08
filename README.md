@@ -1,4 +1,246 @@
 
+# GA8-220501096-AA1-EV02 módulos integrados
+
+En este apartado se documenta la integración de los módulos del sistema (frontend + backend + base de datos), partiendo de los requerimientos y dejando evidencia de ejecución, configuración y pruebas.
+
+## 1) Requerimientos del sistema
+
+### 1.1 Requerimientos funcionales (qué hace el sistema)
+
+- **Autenticación**
+  - Registro de usuario.
+  - Inicio de sesión.
+- **Catálogo de libros**
+  - Listar libros.
+  - Ver detalle de un libro.
+  - (ADMIN) administrar libros y categorías.
+- **Compras**
+  - Agregar libros a carrito.
+  - Realizar checkout del carrito.
+  - Consultar compras realizadas.
+- **Préstamos (renta)**
+  - Crear préstamo.
+  - Extender préstamo (con reglas).
+  - (ADMIN) registrar devolución.
+- **Cuenta / Perfil**
+  - Consultar datos del usuario.
+  - Cambiar contraseña.
+
+### 1.2 Requerimientos no funcionales (cómo debe operar)
+
+- **Seguridad**
+  - Contraseñas con hash (`bcryptjs`).
+  - Restricción por roles (`ADMIN` y `USUARIO`).
+  - Variables sensibles en `.env` (no hardcodeadas).
+- **Disponibilidad / consistencia**
+  - Operaciones críticas con transacciones (ej. checkout y préstamo).
+- **Mantenibilidad**
+  - Organización por módulos (libros, carrito, compras, préstamos, usuarios, admin).
+  - Documentación de endpoints y pruebas.
+
+## 2) Archivos ejecutables (qué se ejecuta para correr cada módulo)
+
+### 2.1 Backend (API + servidor de estáticos)
+
+Ubicación:
+
+- `backend/`
+
+Ejecutables (scripts):
+
+- `npm start`
+  - Ejecuta: `node server/server.js`
+- `npm run dev`
+  - Ejecuta: `node --watch server/server.js`
+
+Archivo principal:
+
+- `backend/server/server.js`
+
+### 2.2 Frontend React (SPA)
+
+Ubicación:
+
+- `frontend/react/`
+
+Ejecutables (scripts):
+
+- `npm run dev` (servidor de desarrollo)
+- `npm run build` (build de producción)
+- `npm run preview` (preview del build)
+
+Archivos principales:
+
+- `frontend/react/src/main.jsx` (punto de entrada)
+- `frontend/react/src/App.jsx` (rutas y navegación)
+
+### 2.3 Base de datos (scripts SQL)
+
+Ubicación:
+
+- `backend/sql/`
+
+Ejecutables:
+
+- Scripts `*.sql` para crear esquema y datos semilla.
+
+## 3) URLs donde se han desplegado los módulos
+
+### 3.1 URLs de desarrollo local
+
+- **Backend**: `http://localhost:3000`
+- **Frontend React (Vite)**: `http://localhost:5173`
+
+
+## 4) Documentación por módulo y componente (entradas y salidas)
+
+La API se organiza por módulos; para cada módulo se documentan entradas (request) y salidas (response).
+
+Notas generales:
+
+- **Formato de datos**: JSON.
+- **Header de autenticación del proyecto**: `x-user-id: <id_usuario>`.
+- **Errores estándar** (ejemplos):
+  - `400` → `{ "error": "..." }`
+  - `401` → `{ "error": "No autenticado" }`
+  - `403` → `{ "error": "Solo administradores" }` o `{ "error": "No autorizado" }`
+  - `404` → `{ "error": "... no encontrado" }`
+  - `409` → `{ "error": "Conflicto / regla de negocio" }`
+
+### 4.1 Módulo Utilidades
+
+- **Entrada**: `GET /api/health` (sin body)
+- **Salida**: `200` con `{ "ok": true, "db": true }`
+
+### 4.2 Módulo Autenticación
+
+- **Entrada**: `POST /api/auth/register`
+  - Body: `{ "usuario": "correo", "password": "...", "nombre": "..." }`
+- **Salida**:
+  - `201` con `{ "ok": true, "message": "Registro satisfactorio", "id_usuario": ..., "usuario": "..." }`
+
+- **Entrada**: `POST /api/auth/login`
+  - Body: `{ "usuario": "correo", "password": "..." }`
+- **Salida**:
+  - `200` con `{ "ok": true, "message": "Autenticación satisfactoria", "user": { ... } }`
+  - `401` con `{ "ok": false, "error": "Error en la autenticación" }`
+
+### 4.3 Módulo Libros
+
+- **Entrada**: `GET /api/libros`
+- **Salida**: `200` con arreglo de libros.
+
+- **Entrada**: `GET /api/libros/:id`
+- **Salida**:
+  - `200` con objeto libro.
+  - `404` si no existe.
+
+### 4.4 Módulo Carrito
+
+- **Entrada**: `GET /api/carrito?id_usuario=...` (requiere `x-user-id`)
+- **Salida**: `200` con arreglo de items.
+
+- **Entrada**: `POST /api/carrito` (requiere `x-user-id`)
+  - Body: `{ "id_usuario": ..., "id_libro": ..., "cantidad": ... }`
+- **Salida**: `200` con `{ "ok": true }`
+
+- **Entrada**: `POST /api/carrito/checkout` (requiere `x-user-id`)
+  - Body: `{ "id_usuario": ... }`
+- **Salida**:
+  - `200` con `{ "ok": true }`
+  - `409` si no hay stock suficiente.
+
+### 4.5 Módulo Compras
+
+- **Entrada**: `GET /api/compras?id_usuario=...` (requiere `x-user-id`)
+- **Salida**: `200` con arreglo de compras.
+
+- **Entrada**: `POST /api/compras` (requiere `x-user-id`)
+  - Body: `{ "id_usuario": ..., "id_libro": ... }`
+- **Salida**:
+  - `201` con `{ "id_compra": ... }`
+  - `409` si el libro no está disponible para compra.
+
+### 4.6 Módulo Préstamos
+
+- **Entrada**: `GET /api/prestamos?id_usuario=...` (requiere `x-user-id`)
+- **Salida**: `200` con arreglo de préstamos.
+
+- **Entrada**: `POST /api/prestamos` (requiere `x-user-id`)
+  - Body: `{ "id_usuario": ..., "id_libro": ... }`
+- **Salida**:
+  - `201` con `{ "id_prestamo": ... }`
+  - `409` si el libro no está disponible para préstamo.
+
+- **Entrada**: `POST /api/prestamos/:id/extender` (requiere `x-user-id`)
+  - Body: `{ "id_usuario": ... }`
+- **Salida**:
+  - `200` con `{ "ok": true }`
+  - `409` si el préstamo no está activo o supera límite.
+
+- **Entrada**: `POST /api/prestamos/:id/devolver` (solo `ADMIN`)
+  - Headers: `x-user-id: <adminId>`
+  - Body: `{ "id_usuario": ... }`
+- **Salida**:
+  - `200` con `{ "ok": true }`
+
+### 4.7 Módulo Administración
+
+- **Entrada**: `GET /api/admin/*` (solo `ADMIN`)
+- **Salida**: `200` con datos solicitados.
+
+## 5) Pruebas realizadas por módulo y resultados
+
+Las pruebas manuales se documentan en el apartado **GA8 EV01 → 14.1 Pruebas manuales con Postman**.
+
+Resumen de lo que se valida con las pruebas:
+
+- **Autenticación**: registro/login con éxito y con error.
+- **Seguridad**: respuestas `401` y `403` en rutas privadas y admin.
+- **Libros**: listados, filtros y detalle.
+- **Carrito**: agregar/listar/eliminar/checkout (incluyendo error de stock insuficiente `409`).
+- **Compras**: compra puntual y listado.
+- **Préstamos**: crear/listar/extender (límite) y devolución admin.
+
+Configuraciones documentadas:
+
+- Servidor backend y frontend (puertos y proxy).
+- Variables de entorno para MySQL.
+- Scripts SQL para levantar el esquema.
+
+## 6) Manual técnico (resumen)
+
+### 6.1 Manual técnico de instalación
+
+1) Crear BD y cargar scripts SQL (carpeta `backend/sql/`).
+2) Configurar `backend/.env` con credenciales de MySQL.
+3) Levantar backend:
+   - `npm install`
+   - `npm start`
+4) Levantar frontend React (opcional si se usa SPA):
+   - `npm install`
+   - `npm run dev`
+
+### 6.2 Manual técnico de configuración
+
+- Backend:
+  - Puerto: `PORT` (por defecto 3000).
+  - MySQL: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+- Frontend:
+  - Vite en `5173`.
+  - Proxy configurado para consumir `/api` desde el backend.
+
+### 6.3 Manual técnico de operación
+
+- Probar disponibilidad:
+  - `GET /api/health`.
+- Probar autenticación:
+  - `POST /api/auth/register` y `POST /api/auth/login`.
+- Probar módulos privados:
+  - Agregar `x-user-id` en Postman.
+
+---
+
 # GA8-220501096-AA1-EV01 desarrollar software a partir de la integración de sus módulos componentes
 
 Este proyecto integra módulos de **frontend** (React/HTML) y **backend** (API REST) para un sistema de gestión (biblioteca) con base de datos **MySQL**.

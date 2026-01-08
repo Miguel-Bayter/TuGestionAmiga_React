@@ -1728,6 +1728,7 @@ app.post('/api/prestamos', asyncHandler(async (req, res) => {
     // Validación anti-error FK dentro de la transacción:
     // - Si el usuario no existe, no tiene sentido continuar.
     // - Se hace aquí (con conn) para mantener todo consistente dentro de la transacción.
+    // - Esto también ayuda cuando el usuario quedó guardado en localStorage pero fue borrado de la BD.
     const [usuarios] = await conn.query(
       'SELECT 1 FROM usuario WHERE id_usuario = :id_usuario LIMIT 1',
       { id_usuario: uid }
@@ -1807,6 +1808,10 @@ app.post('/api/prestamos', asyncHandler(async (req, res) => {
     conn.release();
   }
 }));
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint no encontrado' });
+});
 
 // ================================
 //  Manejo de errores

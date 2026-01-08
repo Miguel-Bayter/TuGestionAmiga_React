@@ -1,4 +1,663 @@
 
+# GA8-220501096-AA1-EV01 desarrollar software a partir de la integración de sus módulos componentes
+
+Este proyecto integra módulos de **frontend** (React/HTML) y **backend** (API REST) para un sistema de gestión (biblioteca) con base de datos **MySQL**.
+
+## 1) Mecanismos de seguridad requeridos por la aplicación
+
+- **Autenticación**: el proyecto usa sesión simple desde el frontend mediante `localStorage` y el header `x-user-id`.
+- **Autorización por roles**:
+  - `ADMIN` (`id_rol = 1`) para rutas `/api/admin/*` y funciones administrativas.
+  - `USUARIO` (`id_rol = 2`) para operaciones propias (carrito, préstamos, compras).
+- **Protección de recursos**:
+  - El backend valida que el usuario exista antes de permitir operaciones privadas.
+  - El backend bloquea el servido de archivos sensibles como `.env`, `.sql`, `server.js`, etc.
+- **Protección de credenciales**:
+  - Las contraseñas se almacenan usando hash con `bcryptjs` (no texto plano).
+  - La configuración de conexión a MySQL se gestiona por variables de entorno con `dotenv`.
+
+## 2) Identificar las capas en donde se ubican los componentes
+
+- **Capa de presentación (UI)**:
+  - Frontend **React (Vite + Tailwind)** en `frontend/react/`.
+  - Frontend **HTML estático** en `frontend/public/` (maqueta original).
+- **Capa de aplicación / API**:
+  - Backend **Node.js + Express** en `backend/server/server.js` con endpoints `/api/*`.
+- **Capa de datos**:
+  - **MySQL** (tablas `usuario`, `rol`, `libro`, `carrito_item`, `compra`, `prestamo`, etc.).
+- **Capa transversal (cross-cutting)**:
+  - Middlewares: `asyncHandler`, `requireAuth`, `requireAdmin`, manejo global de errores.
+  - Configuración de entorno y acceso a BD (pool `mysql2/promise`).
+
+## 3) Conocer la metodología de desarrollo de software
+
+- **Levantamiento de requisitos**: historias de usuario (login, catálogo, préstamos, carrito, administración).
+- **Diseño**: definición de módulos, rutas UI, endpoints `/api`, modelo de datos y reglas de negocio.
+- **Implementación**: desarrollo por módulos (auth, libros, carrito, préstamos, compras, admin).
+- **Pruebas**: unitarias y pruebas de integración de endpoints.
+- **Despliegue/entrega**: documentación de ambientes y configuración.
+
+## 4) Conocer el mapa de navegación de la aplicación
+
+### 4.1 Navegación del frontend React (rutas SPA)
+
+Rutas definidas en `frontend/react/src/App.jsx`:
+
+- `GET /login`: inicio de sesión.
+- `GET /register`: registro.
+- `GET /`: inicio/dashboard (redirige a `/login` si no hay sesión).
+- `GET /rentable`: dashboard filtrado (protegido por `RequireAuth`).
+- `GET /buscar`: búsqueda (protegido por `RequireAuth`).
+- `GET /ayuda`: ayuda (protegido por `RequireAuth`).
+- `GET /prestamos`: préstamos del usuario (protegido por `RequireAuth`).
+- `GET /carrito`: carrito del usuario (protegido por `RequireAuth`).
+- `GET /cuenta`: perfil / cuenta (protegido por `RequireAuth`).
+- `GET /admin`: panel de administración (protegido por `RequireAdmin`).
+
+### 4.2 Navegación del frontend HTML (maqueta)
+
+El backend sirve archivos estáticos del frontend y redirige `/` a la maqueta (login HTML).
+
+## 5) Codificar cada módulo en el lenguaje seleccionado
+
+- **Backend**: JavaScript (Node.js ESM) + Express.
+- **Frontend**: JavaScript/JSX con React.
+- **Base de datos**: SQL (scripts en `backend/sql/`).
+
+## 6) Determinar librerías necesarias en cada capa de la aplicación
+
+- **Backend (API)**:
+  - `express`: enrutamiento y middleware HTTP.
+  - `mysql2`: conexión a MySQL (pool y transacciones).
+  - `bcryptjs`: hash/verificación de contraseñas.
+  - `dotenv`: variables de entorno.
+- **Frontend React (UI)**:
+  - `react`, `react-dom`: UI.
+  - `react-router-dom`: navegación SPA.
+  - `tailwindcss`, `postcss`, `autoprefixer`: estilos.
+  - `vite`: tooling de desarrollo/build.
+
+## 7) Determinar los frameworks en cada capa de la aplicación
+
+- **UI**: React (SPA) + TailwindCSS (estilos).
+- **API**: Express (Node.js).
+- **Datos**: MySQL.
+
+## 8) Dividir el módulo a desarrollar en componentes reutilizables
+
+- **Frontend**: componentes como `Layout`, `RequireAuth`, `RequireAdmin`, tarjetas/listas de libros, modales, formularios.
+- **Backend**: endpoints organizados por módulos funcionales (libros, carrito, compras, préstamos, usuarios, administración) y middlewares reutilizables.
+
+## 9) Aplicar buenas prácticas de escritura de código
+
+- Validación de entradas (`body`, `params`, `query`).
+- Manejo consistente de errores (HTTP status + JSON de error).
+- Uso de transacciones en operaciones críticas (checkout, préstamos, devoluciones).
+- Separación de responsabilidades (UI vs API vs BD).
+- Uso de variables de entorno para credenciales/configuración.
+
+## 10) Dividir el código fuente en paquetes con nombres de fácil entendimiento
+
+Estructura recomendada (sin cambiar el funcionamiento):
+
+- `backend/`
+  - `server/` (arranque/Express)
+  - `modules/` (auth, libros, carrito, compras, préstamos, usuarios, admin)
+  - `db/` (pool, utilidades)
+  - `middleware/` (auth, errores)
+- `frontend/react/src/`
+  - `pages/` (pantallas)
+  - `components/` (componentes reutilizables)
+  - `lib/` o `services/` (cliente API, auth)
+
+## 11) Aplicar patrones de diseño de acuerdo con la arquitectura por componente
+
+- **Backend**:
+  - Controller/Service/Repository para separar HTTP, negocio y acceso a datos.
+  - Middleware para auth/roles y reglas transversales.
+  - Transaction Script para operaciones atómicas (checkout / devolución).
+- **Frontend**:
+  - Composición de componentes.
+  - Guards de ruta (`RequireAuth`, `RequireAdmin`).
+  - Separación de páginas (pages) vs componentes UI.
+
+## 12) Pruebas unitarias de cada módulo
+
+- **Backend**: pruebas de endpoints y servicios (ej. auth, carrito, préstamos) con herramientas tipo `supertest`.
+- **Frontend**: pruebas de componentes/páginas (render, navegación, validaciones) con herramientas tipo React Testing Library.
+
+## 13) Configuraciones de servidores y de bases de datos
+
+- **Servidor backend**: `http://localhost:3000`.
+- **Servidor frontend React (Vite)**: `http://localhost:5173` con proxy a `/api` hacia `http://localhost:3000`.
+- **Base de datos**: MySQL (config en `backend/.env`): `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+
+## 14) Documentar ambientes de desarrollo y pruebas
+
+- **Ambiente de desarrollo**:
+  - Backend: `npm install` y `npm start` en `backend/`.
+  - Frontend React: `npm install` y `npm run dev` en `frontend/react/`.
+- **Ambiente de pruebas**:
+  - Base de datos con scripts en `backend/sql/`.
+  - Pruebas manuales con Postman y (recomendado) pruebas automatizadas unitarias.
+
+### 14.1 Pruebas manuales con Postman (requests y resultados esperados)
+
+#### 14.1.1 Preparación (Environment recomendado)
+
+Crear un Environment (por ejemplo: `local`) con variables:
+
+- `baseUrl` = `http://localhost:3000`
+- `userId` = *(se llena después del login de usuario)*
+- `adminId` = *(se llena después del login de un administrador)*
+
+Header importante del proyecto:
+
+- `x-user-id: <id_usuario>`
+
+Reglas esperadas:
+
+- Si llamas un endpoint “privado” sin `x-user-id`:
+  - **401** con `{ "error": "No autenticado" }`
+- Si llamas un endpoint de admin sin ser admin:
+  - **403** con `{ "error": "Solo administradores" }`
+
+#### 14.1.2 Healthcheck
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/health`
+
+Resultado esperado:
+
+- **200**
+- JSON:
+
+```json
+{ "ok": true, "db": true }
+```
+
+#### 14.1.3 Portadas (covers)
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/covers`
+
+Resultado esperado:
+
+- **200**
+- JSON: arreglo con nombres de archivo (puede estar vacío)
+
+```json
+["cien-anos.jpg", "don-quijote.png"]
+```
+
+#### 14.1.4 Autenticación (servicio simple)
+
+##### A) Registro exitoso
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/auth/register`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Body**:
+
+```json
+{ "usuario": "prueba@mail.com", "password": "1234", "nombre": "Usuario Prueba" }
+```
+
+Resultado esperado:
+
+- **201**
+
+```json
+{ "ok": true, "message": "Registro satisfactorio", "id_usuario": 5, "usuario": "prueba@mail.com" }
+```
+
+##### B) Registro repetido (usuario ya existe)
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/auth/register`
+- **Body**: mismo del registro
+
+Resultado esperado:
+
+- **409**
+- JSON con error indicando que el usuario ya existe
+
+##### C) Login exitoso
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/auth/login`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Body**:
+
+```json
+{ "usuario": "prueba@mail.com", "password": "1234" }
+```
+
+Resultado esperado:
+
+- **200**
+
+```json
+{
+  "ok": true,
+  "message": "Autenticación satisfactoria",
+  "user": { "id_usuario": 5, "nombre": "Usuario Prueba", "correo": "prueba@mail.com", "id_rol": 2 }
+}
+```
+
+Acción:
+
+- Copiar `user.id_usuario` y guardarlo en `{{userId}}`.
+
+##### D) Login fallido (credenciales inválidas)
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/auth/login`
+- **Body**:
+
+```json
+{ "usuario": "prueba@mail.com", "password": "xxxx" }
+```
+
+Resultado esperado:
+
+- **401**
+
+```json
+{ "ok": false, "error": "Error en la autenticación" }
+```
+
+#### 14.1.5 Catálogo de libros
+
+##### A) Listar libros (público)
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/libros`
+
+Resultado esperado:
+
+- **200**
+- JSON: arreglo de libros
+
+##### B) Listar solo disponibles
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/libros?disponible=true`
+
+Resultado esperado:
+
+- **200**
+- JSON: arreglo filtrado
+
+##### C) Detalle de libro
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/libros/10`
+
+Resultado esperado:
+
+- **200** si existe
+- **404** con `{ "error": "Libro no encontrado" }` si no existe
+
+##### D) Historial de préstamos de un libro (solo ADMIN)
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/libros/10/historial`
+- **Headers**:
+  - `x-user-id: {{adminId}}`
+
+Resultado esperado:
+
+- **200** (arreglo)
+- **401** si falta `x-user-id`
+- **403** si `x-user-id` no es admin
+
+#### 14.1.6 Usuarios / Cuenta (privado)
+
+##### A) Obtener datos de usuario (self o ADMIN)
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/usuarios/{{userId}}`
+- **Headers**:
+  - `x-user-id: {{userId}}`
+
+Resultado esperado:
+
+- **200** con datos del usuario
+- **401** si falta `x-user-id`
+- **403** si intentas consultar otro usuario sin ser admin
+
+##### B) Cambiar contraseña
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/usuarios/{{userId}}/password`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body** *(ejemplo)*:
+
+```json
+{ "current_password": "1234", "new_password": "abcd" }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }` (o respuesta equivalente)
+- **400** si faltan campos
+- **401/403** según autenticación/autorización
+
+#### 14.1.7 Recuperación de contraseña (demo)
+
+##### A) Solicitar código
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/password/forgot`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Body**:
+
+```json
+{ "correo": "prueba@mail.com" }
+```
+
+Resultado esperado:
+
+- **200**
+
+```json
+{ "ok": true, "demo_code": "123456", "expires_in_seconds": 600 }
+```
+
+##### B) Restablecer contraseña
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/password/reset`
+- **Headers**:
+  - `Content-Type: application/json`
+- **Body**:
+
+```json
+{ "correo": "prueba@mail.com", "code": "123456", "new_password": "abcd" }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **400** si el código es inválido/expiró
+- **401** si el código es incorrecto
+
+#### 14.1.8 Carrito (privado)
+
+##### A) Ver carrito
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/carrito?id_usuario={{userId}}`
+- **Headers**:
+  - `x-user-id: {{userId}}`
+
+Resultado esperado:
+
+- **200** con arreglo (vacío o con items)
+
+##### B) Agregar al carrito
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/carrito`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}}, "id_libro": 10, "cantidad": 2 }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **400** si falta `id_usuario`, `id_libro` o cantidad inválida
+- **403** si `id_usuario` no coincide con `x-user-id` (y no eres admin)
+
+##### C) Eliminar item del carrito
+
+- **Method**: `DELETE`
+- **URL**: `{{baseUrl}}/api/carrito/10?id_usuario={{userId}}`
+- **Headers**:
+  - `x-user-id: {{userId}}`
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **400** si faltan ids
+
+##### D) Checkout del carrito
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/carrito/checkout`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}} }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **400** si el carrito está vacío
+- **409** si hay stock insuficiente
+
+#### 14.1.9 Compras (privado)
+
+##### A) Listar compras del usuario
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/compras?id_usuario={{userId}}`
+- **Headers**:
+  - `x-user-id: {{userId}}`
+
+Resultado esperado:
+
+- **200** con arreglo de compras
+- **400** si no envías `id_usuario`
+- **403** si `id_usuario` no coincide con `x-user-id` (y no eres admin)
+
+##### B) Compra puntual (1 libro)
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/compras`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}}, "id_libro": 10 }
+```
+
+Resultado esperado:
+
+- **201** con `{ "id_compra": 123 }`
+- **404** si usuario o libro no existen
+- **409** si el libro no está disponible para compra
+
+#### 14.1.10 Préstamos (privado) y devoluciones (solo ADMIN)
+
+##### A) Listar préstamos del usuario
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/prestamos?id_usuario={{userId}}`
+- **Headers**:
+  - `x-user-id: {{userId}}`
+
+Resultado esperado:
+
+- **200** con arreglo de préstamos
+
+##### B) Crear préstamo
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/prestamos`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}}, "id_libro": 10 }
+```
+
+Resultado esperado:
+
+- **201** con `{ "id_prestamo": 123 }`
+- **404** si usuario o libro no existen
+- **409** si el libro no está disponible para préstamo
+
+##### C) Extender préstamo (self o admin)
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/prestamos/123/extender`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{userId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}} }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **404** si el préstamo no existe
+- **409** si no está activo o se alcanza límite de extensiones
+
+##### D) Devolver préstamo (solo ADMIN)
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/prestamos/123/devolver`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{adminId}}`
+- **Body**:
+
+```json
+{ "id_usuario": {{userId}} }
+```
+
+Resultado esperado:
+
+- **200** con `{ "ok": true }`
+- **401** si falta `x-user-id`
+- **403** si no es admin
+- **404** si el préstamo no existe
+- **409** si ya fue devuelto
+
+#### 14.1.11 Administración (solo ADMIN)
+
+##### A) Listar categorías
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/admin/categorias`
+- **Headers**:
+  - `x-user-id: {{adminId}}`
+
+Resultado esperado:
+
+- **200** con arreglo de categorías
+
+##### B) Listar libros (admin)
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/admin/libros`
+- **Headers**:
+  - `x-user-id: {{adminId}}`
+
+Resultado esperado:
+
+- **200** con arreglo de libros
+
+##### C) Crear libro
+
+- **Method**: `POST`
+- **URL**: `{{baseUrl}}/api/admin/libros`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{adminId}}`
+- **Body** *(ejemplo básico)*:
+
+```json
+{ "titulo": "Libro X", "autor": "Autor Y", "descripcion": "...", "stock_compra": 2, "stock_renta": 1, "valor": 35000, "id_categoria": 1 }
+```
+
+Resultado esperado:
+
+- **201** con `{ "id_libro": 10 }` (o id equivalente)
+- **400** si faltan campos obligatorios
+
+##### D) Editar libro (PATCH)
+
+- **Method**: `PATCH`
+- **URL**: `{{baseUrl}}/api/admin/libros/10`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-user-id: {{adminId}}`
+- **Body** *(ejemplo)*:
+
+```json
+{ "stock_compra": 5 }
+```
+
+Resultado esperado:
+
+- **200** (respuesta de éxito)
+- **400** si el id es inválido
+
+##### E) Eliminar libro
+
+- **Method**: `DELETE`
+- **URL**: `{{baseUrl}}/api/admin/libros/10`
+- **Headers**:
+  - `x-user-id: {{adminId}}`
+
+Resultado esperado:
+
+- **200** (o **204**) según implementación
+
+##### F) Endpoints admin adicionales
+
+También se pueden probar (según lo expuesto por la API):
+
+- `GET {{baseUrl}}/api/admin/usuarios`
+- `POST {{baseUrl}}/api/admin/usuarios`
+- `PATCH {{baseUrl}}/api/admin/usuarios/:id`
+- `PATCH {{baseUrl}}/api/admin/usuarios/:id/rol`
+- `DELETE {{baseUrl}}/api/admin/usuarios/:id`
+- `GET {{baseUrl}}/api/admin/prestamos`
+
+Resultados esperados:
+
+- **200/201** si `x-user-id` corresponde a `ADMIN`
+- **401** si falta `x-user-id`
+- **403** si no es admin
+
+#### 14.1.12 Validación de endpoint inexistente
+
+- **Method**: `GET`
+- **URL**: `{{baseUrl}}/api/esto-no-existe`
+
+Resultado esperado:
+
+- **404**
+
+```json
+{ "error": "Endpoint no encontrado" }
+```
+
 # GA7-220501096-AA5-EV03: Diseño y desarrollo de servicios web - proyecto
 
 ## 1) Visión general de la API

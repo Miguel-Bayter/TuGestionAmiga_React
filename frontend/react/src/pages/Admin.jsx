@@ -70,6 +70,8 @@ export default function Admin() {
   const [loans, setLoans] = useState([]);
   const [categories, setCategories] = useState([]);
 
+  const [bookQuery, setBookQuery] = useState('');
+
   const [bookForm, setBookForm] = useState(emptyBook);
   const [showBookForm, setShowBookForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -310,6 +312,24 @@ export default function Admin() {
     return map;
   }, [categories]);
 
+  const filteredBooks = useMemo(() => {
+    const list = Array.isArray(books) ? books : [];
+    const q = String(bookQuery || '').trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((b) => {
+      const id = String(b?.id_libro ?? '').toLowerCase();
+      const titulo = String(b?.titulo ?? '').toLowerCase();
+      const autor = String(b?.autor ?? '').toLowerCase();
+      const categoria =
+        b?.id_categoria != null
+          ? String(categoryNameById.get(String(b.id_categoria)) || '').toLowerCase()
+          : '';
+
+      return id.includes(q) || titulo.includes(q) || autor.includes(q) || categoria.includes(q);
+    });
+  }, [books, bookQuery, categoryNameById]);
+
   const onEditBook = (row) => {
     resetMessages();
     setTab('libros');
@@ -528,8 +548,29 @@ export default function Admin() {
                 Nuevo
               </button>
             </div>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={bookQuery}
+                  placeholder="Buscar por título, autor, categoría o ID"
+                  onChange={(e) => setBookQuery(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300"
+                  onClick={() => setBookQuery('')}
+                >
+                  Limpiar
+                </button>
+              </div>
+              {String(bookQuery || '').trim() ? (
+                <p className="mt-2 text-xs text-gray-500">Mostrando {filteredBooks.length} resultado(s).</p>
+              ) : null}
+            </div>
             <div className="lg:hidden">
-              {(books || []).map((b) => (
+              {(filteredBooks || []).map((b) => (
                 <div key={b.id_libro} className="border-t border-gray-200 p-4">
                   <div className="min-w-0">
                     <div className="flex items-start justify-between gap-2">
@@ -588,7 +629,9 @@ export default function Admin() {
                   </div>
                 </div>
               ))}
-              {Array.isArray(books) && books.length === 0 ? <p className="px-6 py-4 text-sm text-gray-500">No hay libros.</p> : null}
+              {Array.isArray(filteredBooks) && filteredBooks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">No hay libros.</p>
+              ) : null}
             </div>
             <div className="hidden lg:block overflow-hidden">
               <table
@@ -667,7 +710,7 @@ export default function Admin() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {(books || []).map((b) => (
+                  {(filteredBooks || []).map((b) => (
                     <tr key={b.id_libro}>
                       <td
                         title={String(b?.titulo || '-')}
@@ -738,7 +781,7 @@ export default function Admin() {
                       </td>
                     </tr>
                   ))}
-                  {Array.isArray(books) && books.length === 0 ? (
+                  {Array.isArray(filteredBooks) && filteredBooks.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-4 text-sm text-gray-500">
                         No hay libros.

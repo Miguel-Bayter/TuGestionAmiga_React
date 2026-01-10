@@ -1,4 +1,182 @@
 
+
+# Taller sobre codificación de módulos del software GA9-220501096-AA1EV01.
+
+Este repositorio implementa una solución modular tipo **frontend + backend + base de datos** (React + Node/Express + MySQL). En este apartado se explica qué se probó, cómo se ejecutaron las pruebas con Cypress, qué se esperaba de ellas y cómo documentar evidencias para cumplir los criterios de evaluación.
+
+## 1) ¿Qué tipos de pruebas se adaptan mejor al proyecto?
+
+Por la arquitectura y por los casos de uso principales (login, catálogo, carrito, checkout, préstamos y administración), se adaptan mejor:
+
+- **Pruebas E2E (End-to-End)** con Cypress
+  - Validan el flujo real desde el navegador (como lo usaría un usuario) y que el frontend consuma correctamente la API.
+  - Son ideales para evidenciar con capturas/vídeo.
+- **Pruebas de integración (API + Base de datos)**
+  - Verifican endpoints `/api/*` con MySQL, códigos HTTP (`200/201/401/403/404/409`) y efectos en datos.
+  - En este proyecto ya hay pruebas manuales con Postman (ver sección 14.1).
+- **Pruebas de autorización (roles y rutas protegidas)**
+  - Comprueban que un usuario sin sesión sea redirigido a `/login`.
+  - Comprueban que un usuario sin rol admin no pueda acceder a `/admin`.
+
+No se priorizaron otras pruebas (por ejemplo performance o seguridad avanzada) porque el objetivo principal del taller es demostrar **funcionalidad**, **flujo completo**, **reglas de negocio** y **trazabilidad** con evidencias.
+
+## 2) Herramienta seleccionada e instalada: Cypress
+
+Se seleccionó **Cypress** como herramienta E2E porque:
+
+- Permite probar el flujo completo de la SPA (React) consumiendo la API.
+- Permite ver ejecución paso a paso y genera evidencia (screenshots/videos).
+- Reduce la fragilidad de pruebas usando comandos y helpers (por ejemplo login por API).
+
+### 2.1 Instalación
+
+En `frontend/react/`:
+
+```bash
+npm install
+```
+
+La dependencia de Cypress ya está incluida en el proyecto (devDependency) y se configuraron scripts para abrir y ejecutar las pruebas.
+
+## 3) Ambiente de pruebas (alineado al entorno de producción)
+
+Para que los resultados sean representativos, el ambiente debe estar lo más parecido posible al real:
+
+- **Base de datos MySQL** levantada y con datos semilla (si aplica).
+- **Backend** levantado en `http://localhost:3000`.
+- **Frontend (Vite)** levantado en `http://localhost:5173`.
+
+Notas importantes del proyecto:
+
+- La sesión se guarda en `localStorage` (key `tga_auth_user`).
+- La API usa el header `x-user-id` para autorizar acciones; el frontend lo agrega automáticamente.
+
+## 4) ¿Cómo ejecutar las pruebas con Cypress?
+
+### 4.1 Prerrequisitos (antes de abrir Cypress)
+
+1) Levantar MySQL.
+2) Levantar el backend (puerto 3000).
+3) Levantar el frontend (puerto 5173).
+
+### 4.2 Ejecución en modo gráfico (Cypress UI)
+
+En `frontend/react/`:
+
+```bash
+npm run cy:open
+```
+
+Para ejecutar también las pruebas que requieren credenciales de administrador:
+
+```bash
+npm run cy:open:admin
+```
+
+En la interfaz:
+
+1) Seleccionar **E2E Testing**.
+2) Elegir un navegador.
+3) Ejecutar el spec deseado.
+
+### 4.3 Ejecución por consola (modo automático)
+
+En `frontend/react/`:
+
+```bash
+npm run cy:run
+```
+
+Para correr únicamente el spec de admin (con variables de entorno):
+
+```bash
+npm run cy:run:admin
+```
+
+## 5) ¿Qué se espera de estas pruebas (resultados esperados)?
+
+Cada prueba valida un comportamiento observable del sistema:
+
+- **Autenticación**: permitir registro/login y navegación a rutas protegidas.
+- **Rutas protegidas**: sin sesión debe redirigir a `/login`.
+- **Carrito**: agregar items, visualizar carrito y procesar checkout dejando el carrito vacío.
+- **Préstamos**: crear préstamo y visualizarlo en el listado.
+- **Roles**: usuario normal no debe ver/acceder a administración; admin sí.
+
+Si alguna prueba falla, se espera obtener:
+
+- Evidencia del fallo (captura o vídeo).
+- Un mensaje claro del paso que falló (assertion de Cypress).
+
+## 6) Plan de pruebas, casos de prueba y trazabilidad
+
+La trazabilidad se logra mapeando **caso de uso → caso de prueba → evidencia**.
+
+| ID | Caso de uso | Spec Cypress | Tipo | Resultado esperado | Evidencia |
+|---|---|---|---|---|---|
+| CP-01 | Registro/Login | `01-auth.cy.js` | E2E | Inicia sesión y entra a la app | Captura/Vídeo Cypress |
+| CP-02 | Rutas protegidas | `02-guards.cy.js` | E2E | Sin sesión redirige a `/login` | Captura Cypress |
+| CP-03 | Catálogo/Carrito | `03-catalogo-carrito.cy.js` | E2E | Agrega al carrito, checkout devuelve 200 y carrito vacío | Captura Cypress |
+| CP-04 | Préstamos | `04-prestamos.cy.js` | E2E | Crea préstamo y aparece en listado | Captura Cypress |
+| CP-05 | Admin (guard) | `05-admin-guard.cy.js` | E2E/roles | Usuario normal no entra a `/admin`; admin sí (si se configuran env vars) | Captura Cypress |
+| CP-06 | Flujos extra | `06-flujos-extra.cy.js` | E2E | Logout; redirect post-login; sidebar admin visible/oculto | Captura Cypress |
+
+## 7) Resumen de las pruebas realizadas
+
+Resumen (lo ejecutado con Cypress):
+
+- **Autenticación**: registro/login por UI; creación/login de usuario por API para estabilizar escenarios.
+- **Rutas protegidas**: acceso sin sesión redirige a `/login`.
+- **Carrito y checkout**: checkout validado por request (`POST /api/carrito/checkout`) y por estado final (carrito vacío).
+- **Préstamos**: creación y visualización del préstamo.
+- **Administración**:
+  - Usuario normal: bloqueado para `/admin`.
+  - Admin: habilitado si se ejecuta Cypress con `ADMIN_EMAIL` y `ADMIN_PASSWORD`.
+
+## 8) Evidencias (capturas de pantalla) y cómo anexarlas
+
+Durante la ejecución en modo gráfico puedes tomar capturas desde Cypress. Además, Cypress guarda artefactos cuando se ejecuta en modo run:
+
+- Capturas: `frontend/react/cypress/screenshots/`
+- Videos: `frontend/react/cypress/videos/`
+
+Para anexarlas al trabajo, se recomienda:
+
+1) Captura del comando de instalación/ejecución.
+2) Captura de Cypress UI mostrando los specs.
+3) Captura de una ejecución en verde.
+4) Si hay fallos: captura del error y el paso que falló.
+
+## 9) Estructura mínima del documento (portada, introducción y conclusiones)
+
+Plantilla sugerida para el documento escrito (puede copiarse y completarse):
+
+### 9.1 Portada
+
+- **Título**: Taller sobre codificación de módulos del software GA9-220501096-AA1EV01
+- **Nombre**: ______________________________
+- **Ficha/Programa**: ________________________
+- **Instructor**: ____________________________
+- **Fecha**: ________________________________
+
+### 9.2 Introducción
+
+Explicar brevemente:
+
+- Qué sistema se probó (frontend + backend + BD).
+- Objetivo de las pruebas (validar casos de uso y reglas de negocio).
+- Herramienta utilizada (Cypress) y por qué.
+
+### 9.3 Conclusiones
+
+Incluir:
+
+- Qué funcionalidades quedaron validadas y con qué evidencias.
+- Qué defectos se encontraron (si aplica) y qué se recomienda.
+- Importancia de la trazabilidad (caso de uso → prueba → evidencia).
+
+---
+
 # GA8-220501096-AA1-EV02 módulos integrados
 
 En este apartado se documenta la integración de los módulos del sistema (frontend + backend + base de datos), partiendo de los requerimientos y dejando evidencia de ejecución, configuración y pruebas.
@@ -189,29 +367,30 @@ Notas generales:
 - **Entrada**: `GET /api/admin/*` (solo `ADMIN`)
 - **Salida**: `200` con datos solicitados.
 
-## 5) Pruebas realizadas por módulo y resultados
+## 6) Ejecución de pruebas básicas con Cypress (y capturas)
 
-Las pruebas manuales se documentan en el apartado **GA8 EV01 → 14.1 Pruebas manuales con Postman**.
+Pasos recomendados para generar evidencia:
 
-Resumen de lo que se valida con las pruebas:
+1) Levantar el **backend**.
+2) Levantar el **frontend**.
+3) Ejecutar `npx cypress open`, seleccionar **E2E Testing**.
+4) Ejecutar pruebas (specs) y tomar capturas.
 
-- **Autenticación**: registro/login con éxito y con error.
-- **Seguridad**: respuestas `401` y `403` en rutas privadas y admin.
-- **Libros**: listados, filtros y detalle.
-- **Carrito**: agregar/listar/eliminar/checkout (incluyendo error de stock insuficiente `409`).
-- **Compras**: compra puntual y listado.
-- **Préstamos**: crear/listar/extender (límite) y devolución admin.
+Para correr el test de **Admin** (`05-admin-guard.cy.js`) debes pasar variables de entorno a Cypress:
 
-Configuraciones documentadas:
+```bash
+npm run cy:run:admin
+```
 
-- Servidor backend y frontend (puertos y proxy).
-- Variables de entorno para MySQL.
-- Scripts SQL para levantar el esquema.
+O directamente con Cypress:
+
+```bash
+npx cypress run --spec "cypress/e2e/05-admin-guard.cy.js" --env ADMIN_EMAIL=admin@mail.com,ADMIN_PASSWORD=123456
+```
 
 ## 6) Manual técnico (resumen)
 
 ### 6.1 Manual técnico de instalación
-
 1) Crear BD y cargar scripts SQL (carpeta `backend/sql/`).
 2) Configurar `backend/.env` con credenciales de MySQL.
 3) Levantar backend:

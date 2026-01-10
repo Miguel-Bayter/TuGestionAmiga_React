@@ -25,8 +25,26 @@ react/.vite/
 frontend/react/dist/
 frontend/react/.vite/
 
+ # Vite caches (genérico)
+ .vite/
+ **/.vite/
+
+ # Cypress artifacts
+ cypress/screenshots/
+ cypress/videos/
+ cypress/downloads/
+ **/cypress/screenshots/
+ **/cypress/videos/
+ **/cypress/downloads/
+ cypress.env.json
+
 # Coverage
 coverage/
+
+ # Cache
+ .cache/
+ **/.cache/
+ .eslintcache
 
 # OS / Editor
 .DS_Store

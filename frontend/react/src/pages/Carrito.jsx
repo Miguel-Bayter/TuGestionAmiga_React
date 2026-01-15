@@ -93,6 +93,8 @@ export default function Carrito() {
     const user = getStoredUser();
     if (!user?.id_usuario) return;
 
+    const totalLabel = formatMoney(total);
+
     setCheckingOut(true);
     try {
       await apiFetch('/api/carrito/checkout', {
@@ -102,6 +104,12 @@ export default function Carrito() {
       });
       setSuccess('Compra realizada.');
       window.dispatchEvent(new Event('tga_cart_updated'));
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: `¡Compra exitosa! Total: ${totalLabel}. Gracias por tu compra.` }
+        })
+      );
       await load();
     } catch (e) {
       setError(e?.message || 'No se pudo completar la compra.');

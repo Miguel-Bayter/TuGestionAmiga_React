@@ -38,6 +38,18 @@ const isBookAvailable = (b) => {
   return Number(b?.disponibilidad) === 1;
 };
 
+const isBookRentable = (b) => {
+  const stockRenta = Number(b?.stock_renta);
+  if (Number.isFinite(stockRenta)) return stockRenta > 0;
+  return Number(b?.disponibilidad) === 1;
+};
+
+const isBookPurchasable = (b) => {
+  const stockCompra = Number(b?.stock_compra);
+  if (Number.isFinite(stockCompra)) return stockCompra > 0;
+  return Number(b?.disponibilidad) === 1;
+};
+
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -111,6 +123,31 @@ export default function Dashboard() {
     // Carga inicial del catálogo al montar la pantalla.
     load();
   }, []);
+
+  useEffect(() => {
+    const onCatalogUpdated = () => load();
+    const onLoansUpdated = () => {
+      const uid = user?.id_usuario;
+      if (!uid) return;
+      apiFetch(`/api/prestamos?id_usuario=${encodeURIComponent(uid)}`)
+        .then((rows) => {
+          const list = Array.isArray(rows) ? rows : [];
+          const active = list.filter((r) => {
+            const st = String(r?.estado || '').toLowerCase();
+            return !st.includes('devuel');
+          });
+          setMyLoansCount(active.length);
+        })
+        .catch(() => setMyLoansCount(0));
+    };
+
+    window.addEventListener('tga_catalog_updated', onCatalogUpdated);
+    window.addEventListener('tga_loans_updated', onLoansUpdated);
+    return () => {
+      window.removeEventListener('tga_catalog_updated', onCatalogUpdated);
+      window.removeEventListener('tga_loans_updated', onLoansUpdated);
+    };
+  }, [user?.id_usuario]);
 
   useEffect(() => {
     if (!showBuscar) return;
@@ -214,7 +251,11 @@ export default function Dashboard() {
     // - comprar: se mantiene el listado, pero ocultamos el botón de "Rentar" en BookCard
     // - rentable: muestra solo los disponibles (disponibilidad === 1)
     if (mode === 'rentable') {
-      return byQuery.filter((b) => Number(b?.disponibilidad) === 1);
+      return byQuery.filter((b) => isBookRentable(b));
+    }
+
+    if (mode === 'comprar') {
+      return byQuery.filter((b) => isBookPurchasable(b));
     }
 
     return byQuery;
@@ -222,7 +263,7 @@ export default function Dashboard() {
 
   const totalBooks = books.length;
   const availableBooks = useMemo(() => books.filter((b) => isBookAvailable(b)).length, [books]);
-  const rentableBooks = useMemo(() => books.filter((b) => Number(b?.disponibilidad) === 1).length, [books]);
+  const rentableBooks = useMemo(() => books.filter((b) => isBookRentable(b)).length, [books]);
 
   const activeAdminLoans = useMemo(() => {
     if (!isAdmin) return [];
@@ -548,8 +589,8 @@ export default function Dashboard() {
         {/*
           Botones de filtro:
           - Cambian el modo de renderización.
-          - "Comprar" no filtra, solo oculta el botón de rentar en BookCard.
-          - "Rentable" filtra solo disponibilidad=1.
+          - "Comprar" filtra libros disponibles para compra (stock_compra > 0 si existe, o disponibilidad=1 en esquemas antiguos).
+          - "Rentable" filtra libros disponibles para préstamo (stock_renta > 0 si existe, o disponibilidad=1 en esquemas antiguos).
         */}
         <div className="mt-4 flex flex-wrap items-center gap-2" id="filter-buttons">
           <button
@@ -596,9 +637,6 @@ export default function Dashboard() {
             className={mode === 'rentable' ? 'filter-btn-active' : 'filter-btn'}
             onClick={() => {
               setMode('rentable');
-              // Si estás en otra ruta, dejo la navegación en Inicio para mantener el flujo.
-              // (la pantalla sigue siendo la misma).
-              if (location.pathname !== '/') navigate('/');
             }}
           >
             <svg
@@ -667,6 +705,7 @@ export default function Dashboard() {
           load();
         }}
         book={detailsBook}
+        mode={mode}
       />
     </div>
   );

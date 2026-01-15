@@ -124,6 +124,12 @@ export default function Cuenta() {
     return n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
   };
 
+  const formatCompraDate = (value) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value || '-');
+    return d.toLocaleDateString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  };
+
   const resetMessages = () => {
     setError('');
     setSuccess('');
@@ -456,7 +462,7 @@ export default function Cuenta() {
                   </div>
 
                   <div className="mt-3 rounded-2xl bg-white ring-1 ring-gray-200/60 overflow-hidden">
-                    <div className="lg:hidden">
+                    <div className="lg:hidden max-h-[420px] overflow-y-auto overscroll-contain">
                       {Array.isArray(compras) && compras.length === 0 ? (
                         <p className="px-4 py-4 text-sm text-gray-500">No tienes compras todavía.</p>
                       ) : null}
@@ -472,7 +478,7 @@ export default function Cuenta() {
 
                           <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
                             <p>
-                              <span className="font-semibold text-gray-900">Fecha:</span> {c?.fecha_compra || '-'}
+                              <span className="font-semibold text-gray-900">Fecha:</span> {formatCompraDate(c?.fecha_compra)}
                             </p>
                             <p>
                               <span className="font-semibold text-gray-900">Precio:</span> {formatMoney(c?.precio)}
@@ -482,13 +488,13 @@ export default function Cuenta() {
                       ))}
                     </div>
 
-                    <div className="hidden lg:block overflow-x-auto">
+                    <div className="hidden lg:block max-h-[420px] overflow-auto overscroll-contain">
                       <table className="w-full table-fixed divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                        <thead className="bg-gray-50 sticky top-0 z-10">
                           <tr>
                             <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Libro</th>
-                            <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
-                            <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</th>
+                            <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Fecha</th>
+                            <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Precio</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -502,15 +508,23 @@ export default function Cuenta() {
 
                           {(compras || []).map((c) => (
                             <tr key={c.id_compra}>
-                              <td className="px-4 sm:px-6 py-4">
-                                <div title={String(c?.titulo || '-')} className="text-sm font-medium text-gray-900 truncate">
+                              <td className="px-4 sm:px-6 py-4 min-w-0">
+                                <div
+                                  title={String(c?.titulo || '-')}
+                                  className="text-sm font-medium text-gray-900 truncate max-w-[420px]"
+                                >
                                   {c?.titulo || '-'}
                                 </div>
-                                <div title={String(c?.autor || '-')} className="text-sm text-gray-500 truncate">
+                                <div
+                                  title={String(c?.autor || '-')}
+                                  className="text-sm text-gray-500 truncate max-w-[420px]"
+                                >
                                   {c?.autor || '-'}
                                 </div>
                               </td>
-                              <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c?.fecha_compra || '-'}</td>
+                              <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {formatCompraDate(c?.fecha_compra)}
+                              </td>
                               <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(c?.precio)}</td>
                             </tr>
                           ))}

@@ -80,7 +80,7 @@
                                         <summary class="cursor-pointer font-semibold text-gray-800">No aparecen libros, ¿qué hago?</summary>
                                         <div class="mt-2 text-sm text-gray-700">
                                             Verifica que el servidor esté corriendo en <code>http://localhost:3000</code> y que tu tabla <code>libro</code> tenga datos.
-                                            En el README hay un bloque de INSERTs de ejemplo para llenar la tabla.
+                                            Para cargar datos de ejemplo, ejecuta los scripts en <code>backend/sql</code> (por ejemplo <code>seed_demo_data.sql</code> o <code>seed_admin_and_books.sql</code>) y recarga la página.
                                         </div>
                                     </details>
 
@@ -101,6 +101,21 @@
                                     </details>
 
                                     <details class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                        <summary class="cursor-pointer font-semibold text-gray-800">¿Cómo compro un libro?</summary>
+                                        <div class="mt-2 text-sm text-gray-700">
+                                            Hay dos interfaces:
+                                            <ul class="list-disc pl-5 mt-2 space-y-1">
+                                                <li>
+                                                    <b>Frontend HTML</b> (<code>frontend/public</code>): el botón <b>Comprar</b> registra directamente la compra (POST <code>/api/compras</code>).
+                                                </li>
+                                                <li>
+                                                    <b>Frontend React</b> (<code>frontend/react</code>): <b>Comprar</b> agrega al carrito (POST <code>/api/carrito</code>) y luego se confirma en <b>Carrito</b> con el checkout (POST <code>/api/carrito/checkout</code>).
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </details>
+
+                                    <details class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                                         <summary class="cursor-pointer font-semibold text-gray-800">¿Cómo restablezco mi contraseña?</summary>
                                         <div class="mt-2 text-sm text-gray-700">
                                             En <b>Login</b>, usa <b>¿Olvidaste tu contraseña?</b>:
@@ -116,7 +131,7 @@
                                 <div class="mt-4 rounded-lg border border-gray-200 bg-white p-4">
                                     <ol class="list-decimal pl-5 text-sm text-gray-700 space-y-2">
                                         <li>Configura la BD y el <code>.env</code>.</li>
-                                        <li>Arranca el servidor con <code>npm start</code>.</li>
+                                        <li>Arranca el servidor desde <code>backend/</code> con <code>npm start</code>.</li>
                                         <li>Abre <code>http://localhost:3000/index.html</code>.</li>
                                         <li>Inicia sesión y prueba rentar/comprar.</li>
                                     </ol>

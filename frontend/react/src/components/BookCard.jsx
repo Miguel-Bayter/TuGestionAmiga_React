@@ -9,11 +9,11 @@
   - Aquí también centralizamos las acciones (Ver detalles, Comprar, Rentar).
 */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api.js';
 import { clearStoredUser, getStoredUser } from '../lib/auth.js';
-import { createCoverDataUri, getLocalCoverUrl } from '../lib/covers.js';
+import { createCoverDataUri, ensureCoverMap, getLocalCoverUrl } from '../lib/covers.js';
 
 export default function BookCard({ book, onOpenDetails, mode }) {
   const navigate = useNavigate();
@@ -24,6 +24,28 @@ export default function BookCard({ book, onOpenDetails, mode }) {
   // - Se envía tal cual al backend en POST /api/carrito.
   const [buyQty, setBuyQty] = useState(1);
 
+  const [cartRev, setCartRev] = useState(0);
+
+  const [coversRev, setCoversRev] = useState(0);
+
+  useEffect(() => {
+    const onUpdated = () => setCartRev((v) => v + 1);
+    window.addEventListener('tga_cart_updated', onUpdated);
+    return () => window.removeEventListener('tga_cart_updated', onUpdated);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureCoverMap()
+      .then(() => {
+        if (!cancelled) setCoversRev((v) => v + 1);
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Disponibilidad:
   // - En la base de datos `disponibilidad` se maneja como 1/0.
   // - Con esto controlamos UI (badge) y deshabilitamos botones.
@@ -31,7 +53,24 @@ export default function BookCard({ book, onOpenDetails, mode }) {
   const stockRenta = Number(book?.stock_renta);
   const hasSplitStock = Number.isFinite(stockCompra) || Number.isFinite(stockRenta);
 
-  const buyAvailable = Number.isFinite(stockCompra) ? stockCompra > 0 : Number(book?.disponibilidad) === 1;
+  const getInCartQty = () => {
+    try {
+      const list = typeof window !== 'undefined' ? window.__tga_cart_items : null;
+      const items = Array.isArray(list) ? list : [];
+      const id = Number(book?.id_libro);
+      if (!Number.isFinite(id)) return 0;
+      const found = items.find((it) => Number(it?.id_libro) === id);
+      const n = Number(found?.cantidad);
+      return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const inCartQty = cartRev >= 0 ? getInCartQty() : 0;
+  const buyRemaining = Number.isFinite(stockCompra) ? Math.max(Math.trunc(stockCompra) - inCartQty, 0) : undefined;
+
+  const buyAvailable = Number.isFinite(stockCompra) ? buyRemaining > 0 : Number(book?.disponibilidad) === 1;
   const rentAvailable = Number.isFinite(stockRenta) ? stockRenta > 0 : Number(book?.disponibilidad) === 1;
   const isAvailable = hasSplitStock ? buyAvailable || rentAvailable : Number(book?.disponibilidad) === 1;
 
@@ -48,7 +87,7 @@ export default function BookCard({ book, onOpenDetails, mode }) {
           ? 1
           : 0;
 
-  const coverSrc = getLocalCoverUrl(book?.titulo) || createCoverDataUri(book?.titulo);
+  const coverSrc = (coversRev >= 0 ? getLocalCoverUrl(book?.titulo) : '') || createCoverDataUri(book?.titulo);
 
   // ensureUserOrRedirect:
   // - Centraliza el control de sesión.
@@ -86,12 +125,18 @@ export default function BookCard({ book, onOpenDetails, mode }) {
     // - Si existe stock_compra, también se valida contra ese valor.
     const cantidad = Number(buyQty);
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      window.alert('Cantidad inválida');
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Cantidad inválida' } }));
       return;
     }
 
-    if (Number.isFinite(stockCompra) && cantidad > stockCompra) {
-      window.alert('No hay stock suficiente para esa cantidad');
+    const cartQty = getInCartQty();
+    const remaining = Number.isFinite(stockCompra) ? Math.max(Math.trunc(stockCompra) - cartQty, 0) : undefined;
+    if (Number.isFinite(remaining) && cantidad > remaining) {
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: remaining <= 0 ? 'Ya tienes el stock máximo de este libro en tu carrito.' : 'No hay stock suficiente para esa cantidad' }
+        })
+      );
       return;
     }
 
@@ -108,6 +153,8 @@ export default function BookCard({ book, onOpenDetails, mode }) {
         })
       });
       window.dispatchEvent(new Event('tga_cart_updated'));
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Agregado al carrito' } }));
     } catch (e) {
       handleCompraError(e?.message || 'No se pudo registrar la compra');
     }
@@ -118,6 +165,17 @@ export default function BookCard({ book, onOpenDetails, mode }) {
     const user = ensureUserOrRedirect();
     if (!user) return;
 
+    const cantidad = Number(buyQty);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Cantidad inválida' } }));
+      return;
+    }
+
+    if (Number.isFinite(stockRenta) && cantidad > stockRenta) {
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'No hay stock suficiente para esa cantidad' } }));
+      return;
+    }
+
     try {
       // POST /api/prestamos:
       // - Crea un préstamo y marca el libro como no disponible (backend transaccional).
@@ -126,10 +184,13 @@ export default function BookCard({ book, onOpenDetails, mode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id_usuario: user.id_usuario,
-          id_libro: book.id_libro
+          id_libro: book.id_libro,
+          cantidad
         })
       });
-      window.alert('Préstamo registrado');
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(new Event('tga_loans_updated'));
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Agregado a su lista de renta' } }));
     } catch (e) {
       handleCompraError(e?.message || 'No se pudo registrar el préstamo');
     }
@@ -139,6 +200,26 @@ export default function BookCard({ book, onOpenDetails, mode }) {
   // - En algunos modos (por ejemplo "comprar") se oculta la acción de rentar.
   // - Esto permite reutilizar la card en pantallas con objetivos distintos.
   const showRent = mode !== 'comprar';
+  const showBuy = mode !== 'rentable';
+  const showQty = showBuy || showRent;
+
+  const qtyMax =
+    showBuy && !showRent && Number.isFinite(stockCompra)
+      ? buyRemaining
+      : showRent && !showBuy && Number.isFinite(stockRenta)
+        ? stockRenta
+        : undefined;
+
+  const inputMax =
+    Number.isFinite(qtyMax) && qtyMax > 0
+      ? qtyMax
+      : Number.isFinite(stockCompra) && Number.isFinite(stockRenta)
+        ? Math.max(buyRemaining ?? 0, stockRenta)
+        : Number.isFinite(stockCompra)
+          ? buyRemaining ?? undefined
+          : Number.isFinite(stockRenta)
+            ? stockRenta
+            : undefined;
 
   return (
     <div className="card">
@@ -180,33 +261,49 @@ export default function BookCard({ book, onOpenDetails, mode }) {
               - Se deshabilita si no hay stock de compra.
               - Se limita el máximo cuando stock_compra está disponible.
             */}
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-gray-700">Cantidad</span>
-              <input
-                type="number"
-                min={1}
-                max={Number.isFinite(stockCompra) ? stockCompra : undefined}
-                className="qty-input-sm w-16"
-                value={buyQty}
-                onChange={(e) => setBuyQty(e.target.value)}
-                disabled={!buyAvailable}
-              />
-            </div>
+            {showQty ? (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700">Cantidad</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={inputMax}
+                  className="qty-input-sm w-16"
+                  value={buyQty}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setBuyQty('');
+                      return;
+                    }
+                    let n = Number(raw);
+                    if (!Number.isFinite(n)) return;
+                    n = Math.trunc(n);
+                    if (n < 1) n = 1;
+                    if (Number.isFinite(inputMax) && inputMax > 0 && n > inputMax) n = inputMax;
+                    setBuyQty(String(n));
+                  }}
+                  disabled={showBuy && !showRent ? !buyAvailable : showRent && !showBuy ? !rentAvailable : !(buyAvailable || rentAvailable)}
+                />
+              </div>
+            ) : null}
           </div>
 
-          <div className="book-actions">
+          <div className={`book-actions ${mode !== 'todos' ? 'book-actions-2' : ''}`}>
             <button type="button" className="btn-details" onClick={() => onOpenDetails?.(book)}>
               Ver detalles
             </button>
 
-            <button
-              type="button"
-              className={`btn-buy ${!buyAvailable ? 'btn-disabled' : ''}`}
-              disabled={!buyAvailable}
-              onClick={onBuy}
-            >
-              Comprar
-            </button>
+            {showBuy ? (
+              <button
+                type="button"
+                className={`btn-buy ${!buyAvailable ? 'btn-disabled' : ''}`}
+                disabled={!buyAvailable}
+                onClick={onBuy}
+              >
+                Comprar
+              </button>
+            ) : null}
 
             {showRent ? (
               <button
@@ -217,9 +314,7 @@ export default function BookCard({ book, onOpenDetails, mode }) {
               >
                 Rentar
               </button>
-            ) : (
-              <span />
-            )}
+            ) : null}
           </div>
         </div>
       </div>

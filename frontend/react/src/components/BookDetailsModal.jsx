@@ -10,14 +10,79 @@
     mostrar detalle del libro + historial de préstamos + acciones (comprar / prestar).
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api.js';
 import { clearStoredUser, getStoredUser } from '../lib/auth.js';
-import { createCoverDataUri, getLocalCoverUrl } from '../lib/covers.js';
+import { createCoverDataUri, ensureCoverMap, getLocalCoverUrl } from '../lib/covers.js';
 
-export default function BookDetailsModal({ open, onClose, book }) {
+export default function BookDetailsModal({ open, onClose, book, mode }) {
   const navigate = useNavigate();
+  const dialogRef = useRef(null);
+  const scrollYRef = useRef(0);
+
+  const [coversRev, setCoversRev] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    ensureCoverMap()
+      .then(() => {
+        if (!cancelled) setCoversRev((v) => v + 1);
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document === 'undefined') return;
+
+    scrollYRef.current = typeof window !== 'undefined' ? window.scrollY : 0;
+
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollBarWidth > 0) document.body.style.paddingRight = `${scrollBarWidth}px`;
+
+    const t = setTimeout(() => {
+      try {
+        dialogRef.current?.focus?.({ preventScroll: true });
+      } catch {
+        dialogRef.current?.focus?.();
+      }
+
+      try {
+        window.scrollTo(0, scrollYRef.current || 0);
+      } catch {
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(t);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, [open]);
 
   // detail:
   // - Contiene la respuesta de GET /api/libros/:id.
@@ -35,6 +100,14 @@ export default function BookDetailsModal({ open, onClose, book }) {
   // - Existe para evitar el `prompt()` del navegador (mejor UX y estilo consistente).
   // - Se envía al backend en POST /api/carrito.
   const [buyQty, setBuyQty] = useState(1);
+
+  const [cartRev, setCartRev] = useState(0);
+
+  useEffect(() => {
+    const onUpdated = () => setCartRev((v) => v + 1);
+    window.addEventListener('tga_cart_updated', onUpdated);
+    return () => window.removeEventListener('tga_cart_updated', onUpdated);
+  }, []);
 
   // Usuario actual (sesión simple):
   // - Sirve para decidir si se muestra historial.
@@ -116,7 +189,24 @@ export default function BookDetailsModal({ open, onClose, book }) {
   const stockRenta = Number(effective?.stock_renta);
   const hasSplitStock = Number.isFinite(stockCompra) || Number.isFinite(stockRenta);
 
-  const buyAvailable = Number.isFinite(stockCompra) ? stockCompra > 0 : Number(effective?.disponibilidad) === 1;
+  const getInCartQty = () => {
+    try {
+      const list = typeof window !== 'undefined' ? window.__tga_cart_items : null;
+      const items = Array.isArray(list) ? list : [];
+      const id = Number(effective?.id_libro);
+      if (!Number.isFinite(id)) return 0;
+      const found = items.find((it) => Number(it?.id_libro) === id);
+      const n = Number(found?.cantidad);
+      return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const inCartQty = cartRev >= 0 ? getInCartQty() : 0;
+  const buyRemaining = Number.isFinite(stockCompra) ? Math.max(Math.trunc(stockCompra) - inCartQty, 0) : undefined;
+
+  const buyAvailable = Number.isFinite(stockCompra) ? buyRemaining > 0 : Number(effective?.disponibilidad) === 1;
   const rentAvailable = Number.isFinite(stockRenta) ? stockRenta > 0 : Number(effective?.disponibilidad) === 1;
   const isAvailable = hasSplitStock ? buyAvailable || rentAvailable : Number(effective?.disponibilidad) === 1;
 
@@ -131,8 +221,8 @@ export default function BookDetailsModal({ open, onClose, book }) {
   // - Si no, generamos un SVG por título.
   // - useMemo evita recalcular en cada render.
   const coverSrc = useMemo(() => {
-    return getLocalCoverUrl(effective?.titulo) || createCoverDataUri(effective?.titulo);
-  }, [effective?.titulo]);
+    return (coversRev >= 0 ? getLocalCoverUrl(effective?.titulo) : '') || createCoverDataUri(effective?.titulo);
+  }, [effective?.titulo, coversRev]);
 
   // ensureUserOrRedirect:
   // - Acciones como comprar y prestar requieren un usuario.
@@ -172,12 +262,18 @@ export default function BookDetailsModal({ open, onClose, book }) {
     // - Si stock_compra existe en la BD, se valida para no exceder el stock disponible.
     const cantidad = Number(buyQty);
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      window.alert('Cantidad inválida');
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Cantidad inválida' } }));
       return;
     }
 
-    if (Number.isFinite(stockCompra) && cantidad > stockCompra) {
-      window.alert('No hay stock suficiente para esa cantidad');
+    const cartQty = getInCartQty();
+    const remaining = Number.isFinite(stockCompra) ? Math.max(Math.trunc(stockCompra) - cartQty, 0) : undefined;
+    if (Number.isFinite(remaining) && cantidad > remaining) {
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: remaining <= 0 ? 'Ya tienes el stock máximo de este libro en tu carrito.' : 'No hay stock suficiente para esa cantidad' }
+        })
+      );
       return;
     }
 
@@ -188,6 +284,8 @@ export default function BookDetailsModal({ open, onClose, book }) {
         body: JSON.stringify({ id_usuario: user.id_usuario, id_libro: effective.id_libro, cantidad })
       });
       window.dispatchEvent(new Event('tga_cart_updated'));
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Agregado al carrito' } }));
     } catch (e) {
       handleUserError(e?.message || 'No se pudo registrar la compra');
     }
@@ -202,13 +300,26 @@ export default function BookDetailsModal({ open, onClose, book }) {
     if (!user) return;
     if (!effective?.id_libro) return;
 
+    const cantidad = Number(buyQty);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Cantidad inválida' } }));
+      return;
+    }
+
+    if (Number.isFinite(stockRenta) && cantidad > stockRenta) {
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'No hay stock suficiente para esa cantidad' } }));
+      return;
+    }
+
     try {
       await apiFetch('/api/prestamos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: user.id_usuario, id_libro: effective.id_libro })
+        body: JSON.stringify({ id_usuario: user.id_usuario, id_libro: effective.id_libro, cantidad })
       });
-      window.alert('Préstamo registrado');
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(new Event('tga_loans_updated'));
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: 'Agregado a su lista de renta' } }));
     } catch (e) {
       handleUserError(e?.message || 'No se pudo registrar el préstamo');
     }
@@ -226,9 +337,37 @@ export default function BookDetailsModal({ open, onClose, book }) {
   // - Si open=false, no renderizamos nada para no ocupar el DOM.
   if (!open) return null;
 
-  return (
+  const showRent = mode !== 'comprar';
+  const showBuy = mode !== 'rentable';
+  const showQty = showBuy || showRent;
+
+  const qtyMax =
+    showBuy && !showRent && Number.isFinite(stockCompra)
+      ? buyRemaining
+      : showRent && !showBuy && Number.isFinite(stockRenta)
+        ? stockRenta
+        : undefined;
+
+  const inputMax =
+    Number.isFinite(qtyMax) && qtyMax > 0
+      ? qtyMax
+      : Number.isFinite(stockCompra) && Number.isFinite(stockRenta)
+        ? Math.max(buyRemaining ?? 0, stockRenta)
+        : Number.isFinite(stockCompra)
+          ? buyRemaining ?? undefined
+          : Number.isFinite(stockRenta)
+            ? stockRenta
+            : undefined;
+
+  const qtyDisabled = showBuy && !showRent ? !buyAvailable : showRent && !showBuy ? !rentAvailable : !(buyAvailable || rentAvailable);
+
+  const portalTarget = typeof document !== 'undefined' ? document.body : null;
+
+  const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-4 pt-6 sm:pt-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
@@ -295,15 +434,31 @@ export default function BookDetailsModal({ open, onClose, book }) {
 
                   <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
                     <span className="font-semibold text-gray-900">Cantidad:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={Number.isFinite(stockCompra) ? stockCompra : undefined}
-                      className="qty-input w-24"
-                      value={buyQty}
-                      onChange={(e) => setBuyQty(e.target.value)}
-                      disabled={!buyAvailable}
-                    />
+                    {showQty ? (
+                      <input
+                        type="number"
+                        min={1}
+                        max={inputMax}
+                        className="qty-input w-24"
+                        value={buyQty}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setBuyQty('');
+                            return;
+                          }
+                          let n = Number(raw);
+                          if (!Number.isFinite(n)) return;
+                          n = Math.trunc(n);
+                          if (n < 1) n = 1;
+                          if (Number.isFinite(inputMax) && inputMax > 0 && n > inputMax) n = inputMax;
+                          setBuyQty(String(n));
+                        }}
+                        disabled={qtyDisabled}
+                      />
+                    ) : (
+                      <span className="text-gray-700">-</span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
@@ -341,23 +496,31 @@ export default function BookDetailsModal({ open, onClose, book }) {
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    className={`btn-indigo ${!buyAvailable ? 'btn-disabled' : ''}`}
-                    disabled={!buyAvailable}
-                    onClick={onBuy}
-                  >
-                    Comprar
-                  </button>
+                  {showBuy ? (
+                    <button
+                      type="button"
+                      className={`btn-indigo ${!buyAvailable ? 'btn-disabled' : ''}`}
+                      disabled={!buyAvailable}
+                      onClick={onBuy}
+                    >
+                      Comprar
+                    </button>
+                  ) : (
+                    <span />
+                  )}
 
-                  <button
-                    type="button"
-                    className={`btn-emerald ${!rentAvailable ? 'btn-disabled' : ''}`}
-                    disabled={!rentAvailable}
-                    onClick={onRent}
-                  >
-                    Prestar
-                  </button>
+                  {showRent ? (
+                    <button
+                      type="button"
+                      className={`btn-emerald ${!rentAvailable ? 'btn-disabled' : ''}`}
+                      disabled={!rentAvailable}
+                      onClick={onRent}
+                    >
+                      Prestar
+                    </button>
+                  ) : (
+                    <span />
+                  )}
 
                   <button type="button" className="btn-neutral" onClick={onClose}>
                     Regresar
@@ -443,4 +606,7 @@ export default function BookDetailsModal({ open, onClose, book }) {
       </div>
     </div>
   );
+
+  if (!portalTarget) return modal;
+  return createPortal(modal, portalTarget);
 }

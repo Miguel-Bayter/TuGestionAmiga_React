@@ -35,6 +35,11 @@ const normalizeForMatch = (value) =>
 let coverMap = null;
 let coverMapPromise = null;
 
+export const invalidateCoverMap = () => {
+  coverMap = null;
+  coverMapPromise = null;
+};
+
 export const ensureCoverMap = async () => {
   if (coverMapPromise) return coverMapPromise;
 

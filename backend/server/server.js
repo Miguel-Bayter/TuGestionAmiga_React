@@ -39,8 +39,9 @@ const __dirname = path.dirname(__filename);
 // =========================================
 //  Ubicación del proyecto y carga de .env
 // =========================================
-// Como este archivo está en src/js/, subimos dos niveles para llegar a la raíz del proyecto.
-// Esto nos ayuda a servir bien index.html y también a encontrar el .env aunque el server esté “dentro” de src.
+// Este archivo vive en backend/server/.
+// - PROJECT_ROOT apunta a la carpeta backend/
+// - REPO_ROOT apunta a la raíz del repositorio (donde viven backend/ y frontend/)
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PROJECT_ROOT, '..');
 
@@ -114,6 +115,56 @@ const resetLibroColumnsCache = () => {
   libroColumnsPromise = null;
 };
 
+let prestamoColumnsPromise = null;
+const getPrestamoColumns = async () => {
+  if (prestamoColumnsPromise) return prestamoColumnsPromise;
+
+  prestamoColumnsPromise = (async () => {
+    try {
+      const [rows] = await pool.query('SHOW COLUMNS FROM prestamo');
+      const set = new Set();
+      for (const r of rows || []) {
+        if (r?.Field) set.add(String(r.Field));
+      }
+      return set;
+    } catch {
+      return new Set();
+    }
+  })();
+
+  return prestamoColumnsPromise;
+};
+
+const resetPrestamoColumnsCache = () => {
+  prestamoColumnsPromise = null;
+};
+
+const ensurePrestamoFechaRealColumn = async () => {
+  const cols = await getPrestamoColumns();
+  if (cols.has('fecha_devolucion_real')) return true;
+  try {
+    await pool.query('ALTER TABLE prestamo ADD COLUMN fecha_devolucion_real DATE NULL');
+    resetPrestamoColumnsCache();
+    return true;
+  } catch (e) {
+    const msg = String(e?.message || '').toLowerCase();
+    const code = String(e?.code || '').toUpperCase();
+    if (code === 'ER_DUP_FIELDNAME' || msg.includes('duplicate column')) {
+      resetPrestamoColumnsCache();
+      return true;
+    }
+    try {
+      const [rows] = await pool.query("SHOW COLUMNS FROM prestamo LIKE 'fecha_devolucion_real'");
+      if (Array.isArray(rows) && rows.length) {
+        resetPrestamoColumnsCache();
+        return true;
+      }
+    } catch {
+    }
+    return false;
+  }
+};
+
 // ensureSchema:
 // - Este proyecto empezó con un esquema simple (libro.stock y libro.disponibilidad).
 // - Con los cambios del sistema se agregaron columnas/tablas nuevas:
@@ -153,10 +204,13 @@ const ensureSchema = async () => {
     // Extensiones de préstamo:
     // - La columna extensiones permite limitar cuántas veces se puede extender.
     // - Se deja en 0 por defecto para préstamos antiguos.
-    const [rows] = await pool.query('SHOW COLUMNS FROM prestamo');
-    const cols = new Set((rows || []).map((r) => String(r?.Field || '')));
-    if (!cols.has('extensiones')) {
-      await pool.query('ALTER TABLE prestamo ADD COLUMN extensiones INT NOT NULL DEFAULT 0');
+    const cols = await getPrestamoColumns();
+    const alters = [];
+    if (!cols.has('extensiones')) alters.push('ADD COLUMN extensiones INT NOT NULL DEFAULT 0');
+    if (!cols.has('fecha_devolucion_real')) alters.push('ADD COLUMN fecha_devolucion_real DATE NULL');
+    if (alters.length) {
+      await pool.query(`ALTER TABLE prestamo ${alters.join(', ')}`);
+      resetPrestamoColumnsCache();
     }
   } catch {
   }
@@ -201,7 +255,7 @@ const ensureSchema = async () => {
 // ================================
 // Pequeñas buenas prácticas / seguridad
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '8mb' }));
 
 // ================================
 //  Helpers de errores async
@@ -307,8 +361,8 @@ app.use((req, res, next) => {
 // ================================
 //  Rutas de estáticos
 // ================================
-// Si alguien entra a / lo mando a index.html
- app.get('/', (req, res) => res.redirect('/src/pages/login.html'));
+// Si alguien entra a / lo mando al login del frontend.
+app.get('/', (req, res) => res.redirect('/src/pages/login.html'));
 
 // Sirvo el frontend como archivos estáticos.
 // Buenas prácticas:
@@ -344,6 +398,8 @@ app.post('/api/prestamos/:id/devolver', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'id_prestamo e id_usuario son obligatorios' });
   }
 
+  const hasFechaReal = await ensurePrestamoFechaRealColumn();
+
   const conn = await pool.getConnection();
   try {
     // Transacción:
@@ -373,10 +429,17 @@ app.post('/api/prestamos/:id/devolver', asyncHandler(async (req, res) => {
       return res.status(409).json({ error: 'Este préstamo ya fue devuelto' });
     }
 
-    await conn.query(
-      'UPDATE prestamo SET estado = :estado WHERE id_prestamo = :id_prestamo',
-      { estado: 'Devuelto', id_prestamo }
-    );
+    if (hasFechaReal) {
+      await conn.query(
+        'UPDATE prestamo SET estado = :estado, fecha_devolucion_real = CURDATE() WHERE id_prestamo = :id_prestamo',
+        { estado: 'Devuelto', id_prestamo }
+      );
+    } else {
+      await conn.query(
+        'UPDATE prestamo SET estado = :estado WHERE id_prestamo = :id_prestamo',
+        { estado: 'Devuelto', id_prestamo }
+      );
+    }
 
     const libroCols = await getLibroColumns();
     const id_libro = Number(prestamo.id_libro);
@@ -401,7 +464,20 @@ app.post('/api/prestamos/:id/devolver', asyncHandler(async (req, res) => {
     }
 
     await conn.commit();
-    res.json({ ok: true });
+
+    let fecha_devolucion_real = null;
+    if (hasFechaReal) {
+      try {
+        const [rows] = await pool.query(
+          'SELECT fecha_devolucion_real FROM prestamo WHERE id_prestamo = :id_prestamo LIMIT 1',
+          { id_prestamo }
+        );
+        if (rows.length) fecha_devolucion_real = rows[0]?.fecha_devolucion_real ?? null;
+      } catch {
+      }
+    }
+
+    res.json({ ok: true, fecha_devolucion_real, has_fecha_devolucion_real: hasFechaReal });
   } catch (e) {
     try {
       await conn.rollback();
@@ -483,7 +559,8 @@ app.post('/api/carrito', asyncHandler(async (req, res) => {
 
   const uid = Number(req.body?.id_usuario);
   const lid = Number(req.body?.id_libro);
-  const qty = req.body?.cantidad == null ? 1 : Number(req.body.cantidad);
+  const qtyRaw = req.body?.cantidad == null ? 1 : Number(req.body.cantidad);
+  const qty = Number.isFinite(qtyRaw) ? Math.trunc(qtyRaw) : NaN;
 
   if (!Number.isFinite(uid) || !Number.isFinite(lid) || !Number.isFinite(qty) || qty <= 0) {
     return res.status(400).json({ error: 'id_usuario, id_libro y cantidad son obligatorios' });
@@ -493,14 +570,77 @@ app.post('/api/carrito', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'No autorizado' });
   }
 
-  await pool.query(
-    `INSERT INTO carrito_item (id_usuario, id_libro, cantidad)
-     VALUES (:id_usuario, :id_libro, :cantidad)
-     ON DUPLICATE KEY UPDATE cantidad = cantidad + VALUES(cantidad)`,
-    { id_usuario: uid, id_libro: lid, cantidad: qty }
-  );
+  const libroCols = await getLibroColumns();
+  const canStockCompra = libroCols.has('stock_compra');
+  const canStockLegacy = libroCols.has('stock');
 
-  res.json({ ok: true });
+  if (!canStockCompra && !canStockLegacy) {
+    await pool.query(
+      `INSERT INTO carrito_item (id_usuario, id_libro, cantidad)
+       VALUES (:id_usuario, :id_libro, :cantidad)
+       ON DUPLICATE KEY UPDATE cantidad = cantidad + VALUES(cantidad)`,
+      { id_usuario: uid, id_libro: lid, cantidad: qty }
+    );
+    return res.json({ ok: true });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const selectParts = [];
+    if (canStockCompra) selectParts.push('stock_compra');
+    if (canStockLegacy) selectParts.push('stock');
+
+    const [libRows] = await conn.query(
+      `SELECT ${selectParts.join(', ')} FROM libro WHERE id_libro = :id_libro LIMIT 1 FOR UPDATE`,
+      { id_libro: lid }
+    );
+    if (!libRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Libro no encontrado' });
+    }
+
+    const lib = libRows[0] || {};
+    const stockCompra = canStockCompra ? Number(lib.stock_compra) : Number(lib.stock);
+    if (!Number.isFinite(stockCompra) || stockCompra <= 0) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Libro no disponible para compra' });
+    }
+
+    const [cartRows] = await conn.query(
+      'SELECT cantidad FROM carrito_item WHERE id_usuario = :id_usuario AND id_libro = :id_libro LIMIT 1 FOR UPDATE',
+      { id_usuario: uid, id_libro: lid }
+    );
+    const currentQty = cartRows.length ? Number(cartRows[0]?.cantidad) : 0;
+    const safeCurrent = Number.isFinite(currentQty) && currentQty > 0 ? Math.trunc(currentQty) : 0;
+    const nextTotal = safeCurrent + qty;
+
+    if (nextTotal > stockCompra) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: `No hay stock suficiente. En tu carrito tienes ${safeCurrent} y el stock disponible es ${stockCompra}.`
+      });
+    }
+
+    await conn.query(
+      `INSERT INTO carrito_item (id_usuario, id_libro, cantidad)
+       VALUES (:id_usuario, :id_libro, :cantidad)
+       ON DUPLICATE KEY UPDATE cantidad = :cantidad`,
+      { id_usuario: uid, id_libro: lid, cantidad: nextTotal }
+    );
+
+    await conn.commit();
+    return res.json({ ok: true });
+  } catch (e) {
+    try {
+      await conn.rollback();
+    } catch {
+    }
+    throw e;
+  } finally {
+    conn.release();
+  }
 }));
 
 // Carrito (eliminar item):
@@ -741,6 +881,74 @@ app.get('/api/covers', asyncHandler(async (req, res) => {
   res.json([]);
 }));
 
+app.post('/api/admin/covers', requireAdmin, asyncHandler(async (req, res) => {
+  const { title, dataUrl } = req.body || {};
+  const rawTitle = String(title || '').trim();
+  const rawDataUrl = String(dataUrl || '').trim();
+  if (!rawTitle) return res.status(400).json({ error: 'title es obligatorio' });
+  if (!rawDataUrl) return res.status(400).json({ error: 'dataUrl es obligatorio' });
+
+  const m = rawDataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+  if (!m) return res.status(400).json({ error: 'dataUrl inválido' });
+
+  const mime = String(m[1] || '').toLowerCase();
+  const b64 = String(m[2] || '');
+
+  const extByMime = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif'
+  };
+
+  const ext = extByMime[mime];
+  if (!ext) return res.status(400).json({ error: 'Tipo de imagen no soportado' });
+
+  let buf;
+  try {
+    buf = Buffer.from(b64, 'base64');
+  } catch {
+    return res.status(400).json({ error: 'Base64 inválido' });
+  }
+
+  if (!buf || buf.length === 0) return res.status(400).json({ error: 'Imagen vacía' });
+  if (buf.length > 6 * 1024 * 1024) return res.status(413).json({ error: 'Imagen demasiado grande' });
+
+  const slug = rawTitle
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s/g, '-');
+
+  const safeBase = slug || crypto.randomBytes(8).toString('hex');
+  const fileName = `${safeBase}.${ext}`;
+
+  const dir = path.join(REPO_ROOT, 'frontend', 'public', 'src', 'assets', 'images');
+  await fs.mkdir(dir, { recursive: true });
+
+  try {
+    const files = await fs.readdir(dir);
+    const allowed = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+    await Promise.all(
+      (files || [])
+        .filter((f) => {
+          const base = String(f || '').replace(/\.[^/.]+$/, '');
+          const extname = path.extname(String(f || '')).toLowerCase();
+          return base === safeBase && allowed.has(extname) && f !== fileName;
+        })
+        .map((f) => fs.unlink(path.join(dir, f)).catch(() => null))
+    );
+  } catch {
+  }
+
+  await fs.writeFile(path.join(dir, fileName), buf);
+  res.status(201).json({ file: fileName });
+}));
+
 // ================================
 //  API: Libros (catálogo)
 // ================================
@@ -924,26 +1132,56 @@ app.delete('/api/admin/libros/:id', requireAdmin, asyncHandler(async (req, res) 
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
 
-  const [hasLoans] = await pool.query('SELECT 1 FROM prestamo WHERE id_libro = :id LIMIT 1', { id });
-  if (hasLoans.length) return res.status(409).json({ error: 'No se puede eliminar: el libro tiene préstamos' });
+  const [hasActiveLoans] = await pool.query(
+    "SELECT 1 FROM prestamo WHERE id_libro = :id AND (estado IS NULL OR LOWER(estado) NOT LIKE '%devuel%') LIMIT 1",
+    { id }
+  );
+  if (hasActiveLoans.length) {
+    return res.status(409).json({
+      error: 'No podemos eliminar este libro todavía: tiene préstamos pendientes de devolución. Registra la devolución y vuelve a intentarlo.'
+    });
+  }
 
   const [hasBuys] = await pool.query('SELECT 1 FROM compra WHERE id_libro = :id LIMIT 1', { id });
   if (hasBuys.length) return res.status(409).json({ error: 'No se puede eliminar: el libro tiene compras' });
 
+  const conn = await pool.getConnection();
   try {
-    await pool.query('DELETE FROM carrito_item WHERE id_libro = :id', { id });
-  } catch {
-  }
+    await conn.beginTransaction();
 
-  try {
-    const [result] = await pool.query('DELETE FROM libro WHERE id_libro = :id', { id });
-    if (!result?.affectedRows) return res.status(404).json({ error: 'Libro no encontrado' });
+    try {
+      await conn.query('DELETE FROM carrito_item WHERE id_libro = :id', { id });
+    } catch {
+    }
+
+    try {
+      await conn.query(
+        "DELETE FROM prestamo WHERE id_libro = :id AND estado IS NOT NULL AND LOWER(estado) LIKE '%devuel%'",
+        { id }
+      );
+    } catch {
+    }
+
+    const [result] = await conn.query('DELETE FROM libro WHERE id_libro = :id', { id });
+    if (!result?.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Libro no encontrado' });
+    }
+
+    await conn.commit();
   } catch (e) {
+    try {
+      await conn.rollback();
+    } catch {
+    }
+
     const code = String(e?.code || '');
     if (code.includes('ER_ROW_IS_REFERENCED')) {
       return res.status(409).json({ error: 'No se puede eliminar: el libro tiene movimientos asociados' });
     }
     throw e;
+  } finally {
+    conn.release();
   }
 
   res.json({ ok: true });
@@ -1070,26 +1308,60 @@ app.delete('/api/admin/usuarios/:id', requireAdmin, asyncHandler(async (req, res
     return res.status(403).json({ error: 'Solo otro administrador puede eliminarte' });
   }
 
-  const [hasLoans] = await pool.query('SELECT 1 FROM prestamo WHERE id_usuario = :id LIMIT 1', { id });
-  if (hasLoans.length) return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene préstamos' });
-
-  const [hasBuys] = await pool.query('SELECT 1 FROM compra WHERE id_usuario = :id LIMIT 1', { id });
-  if (hasBuys.length) return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene compras' });
-
-  try {
-    await pool.query('DELETE FROM carrito_item WHERE id_usuario = :id', { id });
-  } catch {
+  const [hasActiveLoans] = await pool.query(
+    "SELECT 1 FROM prestamo WHERE id_usuario = :id AND (estado IS NULL OR LOWER(estado) NOT LIKE '%devuel%') LIMIT 1",
+    { id }
+  );
+  if (hasActiveLoans.length) {
+    return res.status(409).json({
+      error: 'No podemos eliminar este usuario todavía: tiene préstamos pendientes de devolución. Registra la devolución y vuelve a intentarlo.'
+    });
   }
 
+  const conn = await pool.getConnection();
   try {
-    const [result] = await pool.query('DELETE FROM usuario WHERE id_usuario = :id', { id });
-    if (!result?.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado' });
+    await conn.beginTransaction();
+
+    try {
+      await conn.query('DELETE FROM carrito_item WHERE id_usuario = :id', { id });
+    } catch {
+    }
+
+    try {
+      await conn.query('DELETE FROM compra WHERE id_usuario = :id', { id });
+    } catch {
+    }
+
+    // El usuario puede tener historial de préstamos devueltos.
+    // Como existe FK prestamo.id_usuario -> usuario, debemos limpiarlos antes de borrar el usuario.
+    try {
+      await conn.query(
+        "DELETE FROM prestamo WHERE id_usuario = :id AND estado IS NOT NULL AND LOWER(estado) LIKE '%devuel%'",
+        { id }
+      );
+    } catch {
+    }
+
+    const [result] = await conn.query('DELETE FROM usuario WHERE id_usuario = :id', { id });
+    if (!result?.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    await conn.commit();
   } catch (e) {
+    try {
+      await conn.rollback();
+    } catch {
+    }
+
     const code = String(e?.code || '');
     if (code.includes('ER_ROW_IS_REFERENCED')) {
       return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene movimientos asociados' });
     }
     throw e;
+  } finally {
+    conn.release();
   }
 
   res.json({ ok: true });
@@ -1103,8 +1375,12 @@ app.get('/api/admin/prestamos', requireAdmin, asyncHandler(async (req, res) => {
   const where = hasQ ? 'WHERE (LOWER(u.nombre) LIKE :q OR LOWER(u.correo) LIKE :q)' : '';
   const params = hasQ ? { q: `%${qRaw}%` } : {};
 
+  const hasFechaReal = await ensurePrestamoFechaRealColumn();
+  const prestamoCols = await getPrestamoColumns();
+  const selectFechaReal = hasFechaReal && prestamoCols.has('fecha_devolucion_real') ? ', p.fecha_devolucion_real' : '';
+
   const [rows] = await pool.query(
-    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion, p.estado, p.extensiones,
+    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion${selectFechaReal}, p.estado, p.extensiones,
             u.id_usuario, u.nombre, u.correo,
             l.id_libro, l.titulo, l.autor
        FROM prestamo p
@@ -1156,8 +1432,12 @@ app.get('/api/libros/:id/historial', asyncHandler(async (req, res) => {
   const id_libro = Number(req.params.id);
   if (!Number.isFinite(id_libro)) return res.status(400).json({ error: 'id inválido' });
 
+  const hasFechaReal = await ensurePrestamoFechaRealColumn();
+  const prestamoCols = await getPrestamoColumns();
+  const selectFechaReal = hasFechaReal && prestamoCols.has('fecha_devolucion_real') ? ', p.fecha_devolucion_real' : '';
+
   const [rows] = await pool.query(
-    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion, p.estado,
+    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion${selectFechaReal}, p.estado,
             u.id_usuario, u.nombre, u.correo
        FROM prestamo p
        INNER JOIN usuario u ON u.id_usuario = p.id_usuario
@@ -1689,8 +1969,12 @@ app.get('/api/prestamos', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'No autorizado' });
   }
 
+  const hasFechaReal = await ensurePrestamoFechaRealColumn();
+  const prestamoCols = await getPrestamoColumns();
+  const selectFechaReal = hasFechaReal && prestamoCols.has('fecha_devolucion_real') ? ', p.fecha_devolucion_real' : '';
+
   const [rows] = await pool.query(
-    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion, p.estado, p.extensiones,
+    `SELECT p.id_prestamo, p.fecha_prestamo, p.fecha_devolucion${selectFechaReal}, p.estado, p.extensiones,
             l.id_libro, l.titulo, l.autor
        FROM prestamo p
        INNER JOIN libro l ON l.id_libro = p.id_libro
@@ -1708,13 +1992,24 @@ app.post('/api/prestamos', asyncHandler(async (req, res) => {
   await requireAuth(req, res, () => {});
   if (res.headersSent) return;
 
-  const { id_usuario, id_libro } = req.body || {};
+  const { id_usuario, id_libro, cantidad } = req.body || {};
 
   const uid = Number(id_usuario);
   const lid = Number(id_libro);
 
+  const qty = Number(cantidad ?? 1);
+  const cantidadInt = Number.isFinite(qty) ? Math.trunc(qty) : NaN;
+
   if (!Number.isFinite(uid) || !Number.isFinite(lid)) {
     return res.status(400).json({ error: 'id_usuario e id_libro son obligatorios' });
+  }
+
+  if (!Number.isFinite(cantidadInt) || cantidadInt <= 0) {
+    return res.status(400).json({ error: 'cantidad inválida' });
+  }
+
+  if (cantidadInt > 20) {
+    return res.status(400).json({ error: 'cantidad máxima: 20' });
   }
 
   if (!assertSelfOrAdmin(req, res, uid)) {
@@ -1759,7 +2054,13 @@ app.post('/api/prestamos', asyncHandler(async (req, res) => {
 
     const row = libros[0] || {};
     const stockRenta = canStockRenta ? Number(row.stock_renta) : Number(row.disponibilidad) === 1 ? 1 : 0;
-    if (!Number.isFinite(stockRenta) || stockRenta <= 0) {
+
+    if (!canStockRenta && cantidadInt > 1) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'cantidad no soportada en este esquema' });
+    }
+
+    if (!Number.isFinite(stockRenta) || stockRenta < cantidadInt) {
       await conn.rollback();
       return res.status(409).json({ error: 'Libro no disponible para préstamo' });
     }
@@ -1771,33 +2072,35 @@ app.post('/api/prestamos', asyncHandler(async (req, res) => {
     const dd = String(date.getDate()).padStart(2, '0');
     const fecha_devolucion = `${yyyy}-${mm}-${dd}`;
 
-    const [result] = await conn.query(
-      'INSERT INTO prestamo (fecha_prestamo, fecha_devolucion, estado, extensiones, id_usuario, id_libro) VALUES (CURDATE(), :fecha_devolucion, :estado, 0, :id_usuario, :id_libro)',
-      {
-        fecha_devolucion: String(fecha_devolucion),
-        estado: 'Activo',
-        id_usuario: uid,
-        id_libro: lid
-      }
-    );
+    for (let i = 0; i < cantidadInt; i += 1) {
+      await conn.query(
+        'INSERT INTO prestamo (fecha_prestamo, fecha_devolucion, estado, extensiones, id_usuario, id_libro) VALUES (CURDATE(), :fecha_devolucion, :estado, 0, :id_usuario, :id_libro)',
+        {
+          fecha_devolucion: String(fecha_devolucion),
+          estado: 'Activo',
+          id_usuario: uid,
+          id_libro: lid
+        }
+      );
+    }
 
     if (canStockRenta) {
       await conn.query(
         `UPDATE libro
-            SET stock_renta = GREATEST(stock_renta - 1, 0),
+            SET stock_renta = GREATEST(stock_renta - :cantidad, 0),
                 disponibilidad = CASE
-                  WHEN (${canStockCompra ? 'stock_compra' : '0'} > 0 OR GREATEST(stock_renta - 1, 0) > 0) THEN 1
+                  WHEN (${canStockCompra ? 'stock_compra' : '0'} > 0 OR GREATEST(stock_renta - :cantidad, 0) > 0) THEN 1
                   ELSE 0
                 END
           WHERE id_libro = :id_libro`,
-        { id_libro: lid }
+        { id_libro: lid, cantidad: cantidadInt }
       );
     } else {
       await conn.query('UPDATE libro SET disponibilidad = 0 WHERE id_libro = :id_libro', { id_libro: lid });
     }
 
     await conn.commit();
-    res.status(201).json({ id_prestamo: result.insertId });
+    res.status(201).json({ ok: true, cantidad: cantidadInt });
   } catch (e) {
     try {
       await conn.rollback();

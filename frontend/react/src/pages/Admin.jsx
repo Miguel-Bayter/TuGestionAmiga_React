@@ -19,6 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { apiFetch } from '../lib/api.js';
 import { getStoredUser } from '../lib/auth.js';
+import { createCoverDataUri, ensureCoverMap, getLocalCoverUrl, invalidateCoverMap } from '../lib/covers.js';
 
 const emptyBook = {
   id_libro: null,
@@ -89,11 +90,16 @@ export default function Admin() {
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [coverDataUrl, setCoverDataUrl] = useState('');
 
   const resetMessages = () => {
     setError('');
     setSuccess('');
   };
+
+  useEffect(() => {
+    ensureCoverMap();
+  }, []);
 
   const onCreateUser = async () => {
     resetMessages();
@@ -122,6 +128,11 @@ export default function Admin() {
         body: JSON.stringify(payload)
       });
       setSuccess('Usuario creado.');
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: `Usuario creado: ${payload.nombre}` }
+        })
+      );
       setNewUserForm({ nombre: '', correo: '', password: '', id_rol: 2 });
       await loadAll(loanQuery);
     } catch (e) {
@@ -190,6 +201,11 @@ export default function Admin() {
         body: JSON.stringify(payload)
       });
       setSuccess('Usuario actualizado.');
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: 'Usuario actualizado correctamente.' }
+        })
+      );
       setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
       await loadAll(loanQuery);
     } catch (e) {
@@ -203,6 +219,22 @@ export default function Admin() {
     resetMessages();
     const id = Number(u?.id_usuario);
     if (!Number.isFinite(id)) return;
+
+    if (!String(loanQuery || '').trim()) {
+      const stList = Array.isArray(loans) ? loans : [];
+      const hasActiveLoan = stList.some((r) => {
+        if (Number(r?.id_usuario) !== id) return false;
+        const st = String(r?.estado || '').toLowerCase();
+        return !st.includes('devuel');
+      });
+      if (hasActiveLoan) {
+        const msg =
+          'No puedes eliminar este usuario porque tiene préstamos activos. Registra la devolución de los libros y vuelve a intentarlo.';
+        setError(msg);
+        window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: msg } }));
+        return;
+      }
+    }
 
     const me = getStoredUser();
     if (Number(me?.id_usuario) === id) {
@@ -218,13 +250,21 @@ export default function Admin() {
       await apiFetch(`/api/admin/usuarios/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       });
-      setSuccess('Usuario eliminado.');
+      const okMsg = 'Usuario eliminado correctamente.';
+      setSuccess(okMsg);
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: okMsg }
+        })
+      );
       if (Number(editUserForm.id_usuario) === id) {
         setEditUserForm({ id_usuario: null, nombre: '', correo: '', password: '' });
       }
       await loadAll(loanQuery);
     } catch (e) {
-      setError(e?.message || 'No se pudo eliminar el usuario.');
+      const msg = e?.message || 'No se pudo eliminar el usuario.';
+      setError(msg);
+      window.dispatchEvent(new CustomEvent('tga_toast', { detail: { message: msg } }));
     } finally {
       setDeletingUserId(null);
     }
@@ -334,6 +374,7 @@ export default function Admin() {
     resetMessages();
     setTab('libros');
     setShowBookForm(true);
+    setCoverDataUrl('');
 
     // Se carga el libro seleccionado al formulario.
     // Esto permite reutilizar el mismo formulario para crear/editar.
@@ -356,18 +397,33 @@ export default function Admin() {
     setTab('libros');
     setShowBookForm(true);
     setBookForm({ ...emptyBook });
+    setCoverDataUrl('');
   };
 
   const onCloseBookForm = () => {
     resetMessages();
     setShowBookForm(false);
     setBookForm({ ...emptyBook });
+    setCoverDataUrl('');
   };
 
   const onDeleteBook = async (row) => {
     resetMessages();
     const id = Number(row?.id_libro);
     if (!Number.isFinite(id)) return;
+
+    if (!String(loanQuery || '').trim()) {
+      const list = Array.isArray(loans) ? loans : [];
+      const hasActiveLoan = list.some((r) => {
+        if (Number(r?.id_libro) !== id) return false;
+        const st = String(r?.estado || '').toLowerCase();
+        return !st.includes('devuel');
+      });
+      if (hasActiveLoan) {
+        setError('No podemos eliminar este libro todavía: tiene préstamos pendientes de devolución. Registra la devolución y vuelve a intentarlo.');
+        return;
+      }
+    }
 
     const title = String(row?.titulo || '').trim() || 'sin título';
     const ok = window.confirm(`¿Eliminar el libro "${title}"?`);
@@ -379,6 +435,11 @@ export default function Admin() {
         method: 'DELETE'
       });
       setSuccess('Libro eliminado.');
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: 'Libro eliminado correctamente.' }
+        })
+      );
       if (Number(bookForm.id_libro) === id) {
         setShowBookForm(false);
         setBookForm({ ...emptyBook });
@@ -440,6 +501,11 @@ export default function Admin() {
           body: JSON.stringify(payload)
         });
         setSuccess('Libro actualizado.');
+        window.dispatchEvent(
+          new CustomEvent('tga_toast', {
+            detail: { message: 'Cambios guardados correctamente.' }
+          })
+        );
       } else {
         // Creación.
         await apiFetch('/api/admin/libros', {
@@ -448,9 +514,33 @@ export default function Admin() {
           body: JSON.stringify(payload)
         });
         setSuccess('Libro creado.');
+        window.dispatchEvent(
+          new CustomEvent('tga_toast', {
+            detail: { message: 'Libro creado exitosamente.' }
+          })
+        );
+      }
+
+      if (coverDataUrl) {
+        try {
+          await apiFetch('/api/admin/covers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: payload.titulo, dataUrl: coverDataUrl })
+          });
+          invalidateCoverMap();
+          await ensureCoverMap();
+        } catch {
+          window.dispatchEvent(
+            new CustomEvent('tga_toast', {
+              detail: { message: 'Libro guardado, pero no se pudo subir la portada.' }
+            })
+          );
+        }
       }
 
       setBookForm({ ...emptyBook });
+      setCoverDataUrl('');
       await loadAll(loanQuery);
     } catch (e) {
       setError(e?.message || 'No se pudo guardar el libro.');
@@ -478,12 +568,31 @@ export default function Admin() {
     if (!id_prestamo || !id_usuario) return;
 
     try {
-      await apiFetch(`/api/prestamos/${encodeURIComponent(id_prestamo)}/devolver`, {
+      const result = await apiFetch(`/api/prestamos/${encodeURIComponent(id_prestamo)}/devolver`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_usuario })
       });
+      const fechaReal = result?.fecha_devolucion_real ?? null;
       setSuccess('Devolución registrada.');
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: 'Devolución registrada correctamente.' }
+        })
+      );
+      setLoans((prev) =>
+        (Array.isArray(prev) ? prev : []).map((p) =>
+          Number(p?.id_prestamo) === Number(id_prestamo)
+            ? {
+                ...p,
+                estado: 'Devuelto',
+                ...(fechaReal ? { fecha_devolucion_real: fechaReal } : {})
+              }
+            : p
+        )
+      );
+      window.dispatchEvent(new Event('tga_catalog_updated'));
+      window.dispatchEvent(new Event('tga_loans_updated'));
       await loadAll(loanQuery);
     } catch (e) {
       setError(e?.message || 'No se pudo registrar la devolución.');
@@ -506,6 +615,11 @@ export default function Admin() {
         body: JSON.stringify({ id_rol: rid })
       });
       setSuccess('Rol actualizado.');
+      window.dispatchEvent(
+        new CustomEvent('tga_toast', {
+          detail: { message: 'Rol actualizado correctamente.' }
+        })
+      );
       await loadAll();
     } catch (e) {
       setError(e?.message || 'No se pudo actualizar el rol.');
@@ -513,6 +627,44 @@ export default function Admin() {
   };
 
   const tabBtn = (key) => (key === tab ? 'filter-btn-active' : 'filter-btn');
+
+  const usersWithActiveLoans = useMemo(() => {
+    if (String(loanQuery || '').trim()) return new Set();
+    const set = new Set();
+    const list = Array.isArray(loans) ? loans : [];
+    for (const r of list) {
+      const uid = Number(r?.id_usuario);
+      if (!Number.isFinite(uid)) continue;
+      const st = String(r?.estado || '').toLowerCase();
+      if (!st.includes('devuel')) set.add(uid);
+    }
+    return set;
+  }, [loans, loanQuery]);
+
+  const booksWithActiveLoans = useMemo(() => {
+    if (String(loanQuery || '').trim()) return new Set();
+    const set = new Set();
+    const list = Array.isArray(loans) ? loans : [];
+    for (const r of list) {
+      const lid = Number(r?.id_libro);
+      if (!Number.isFinite(lid)) continue;
+      const st = String(r?.estado || '').toLowerCase();
+      if (!st.includes('devuel')) set.add(lid);
+    }
+    return set;
+  }, [loans, loanQuery]);
+
+  const canDeleteUser = (u) => {
+    const id = Number(u?.id_usuario);
+    if (!Number.isFinite(id)) return false;
+    return !usersWithActiveLoans.has(id);
+  };
+
+  const canDeleteBook = (b) => {
+    const id = Number(b?.id_libro);
+    if (!Number.isFinite(id)) return false;
+    return !booksWithActiveLoans.has(id);
+  };
 
   return (
     <div>
@@ -615,11 +767,13 @@ export default function Admin() {
                       </button>
                       <button
                         type="button"
-                        disabled={deletingBookId === Number(b.id_libro)}
+                        disabled={deletingBookId === Number(b.id_libro) || !canDeleteBook(b)}
                         className={
                           deletingBookId === Number(b.id_libro)
                             ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
-                            : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                            : !canDeleteBook(b)
+                              ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                              : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
                         }
                         onClick={() => onDeleteBook(b)}
                       >
@@ -767,11 +921,13 @@ export default function Admin() {
                           </button>
                           <button
                             type="button"
-                            disabled={deletingBookId === Number(b.id_libro)}
+                            disabled={deletingBookId === Number(b.id_libro) || !canDeleteBook(b)}
                             className={
                               deletingBookId === Number(b.id_libro)
                                 ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
-                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                                : !canDeleteBook(b)
+                                  ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
                             }
                             onClick={() => onDeleteBook(b)}
                           >
@@ -844,6 +1000,48 @@ export default function Admin() {
                 </div>
 
                 <div>
+                  <label className="form-label">Portada</label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px] sm:items-start">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) {
+                          setCoverDataUrl('');
+                          return;
+                        }
+                        if (!String(file.type || '').startsWith('image/')) {
+                          setError('Selecciona un archivo de imagen válido.');
+                          setCoverDataUrl('');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const result = String(reader.result || '');
+                          setCoverDataUrl(result);
+                        };
+                        reader.onerror = () => {
+                          setError('No se pudo leer la imagen.');
+                          setCoverDataUrl('');
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <img
+                      src={coverDataUrl || getLocalCoverUrl(bookForm.titulo) || createCoverDataUri(bookForm.titulo)}
+                      alt="Vista previa de portada"
+                      className="w-full rounded-xl border border-gray-200 object-cover aspect-[3/4]"
+                      onError={(ev) => {
+                        ev.currentTarget.onerror = null;
+                        ev.currentTarget.src = createCoverDataUri(bookForm.titulo);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
                   <label className="form-label">Stock compra</label>
                   <input
                     type="number"
@@ -887,7 +1085,10 @@ export default function Admin() {
                   <button
                     type="button"
                     className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                    onClick={() => setBookForm({ ...emptyBook })}
+                    onClick={() => {
+                      setBookForm({ ...emptyBook });
+                      setCoverDataUrl('');
+                    }}
                   >
                     Limpiar
                   </button>
@@ -920,6 +1121,7 @@ export default function Admin() {
                 const roleId = Number(u?.id_rol);
                 const isUserRole = roleId === 2;
                 const isAdminRole = roleId === 1;
+                const disableDelete = deletingUserId === Number(u.id_usuario) || !canDeleteUser(u);
 
                 return (
                   <div key={u.id_usuario} className="border-t border-gray-200 p-4">
@@ -972,11 +1174,13 @@ export default function Admin() {
                           </button>
                           <button
                             type="button"
-                            disabled={deletingUserId === Number(u.id_usuario)}
+                            disabled={disableDelete}
                             className={
                               deletingUserId === Number(u.id_usuario)
                                 ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
-                                : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                                : !canDeleteUser(u)
+                                  ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
                             }
                             onClick={() => onDeleteUser(u)}
                           >
@@ -1053,11 +1257,13 @@ export default function Admin() {
                             </button>
                             <button
                               type="button"
-                              disabled={deletingUserId === Number(u.id_usuario)}
+                              disabled={deletingUserId === Number(u.id_usuario) || !canDeleteUser(u)}
                               className={
                                 deletingUserId === Number(u.id_usuario)
                                   ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-200 px-3 text-xs font-semibold text-rose-300'
-                                  : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
+                                  : !canDeleteUser(u)
+                                    ? 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-400'
+                                    : 'inline-flex h-9 w-24 items-center justify-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700'
                               }
                               onClick={() => onDeleteUser(u)}
                             >
@@ -1252,6 +1458,10 @@ export default function Admin() {
                       <span className="font-semibold text-gray-900">Devolución:</span> {formatDateOnly(p?.fecha_devolucion)}
                     </p>
                     <p>
+                      <span className="font-semibold text-gray-900">Devolución efectiva:</span>{' '}
+                      {p?.fecha_devolucion_real ? formatDateOnly(p?.fecha_devolucion_real) : '-'}
+                    </p>
+                    <p>
                       <span className="font-semibold text-gray-900">Estado:</span> {p?.estado || '-'}
                     </p>
                     <p>
@@ -1287,6 +1497,7 @@ export default function Admin() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuario</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Préstamo</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Devolución</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Devolución efectiva</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ext.</th>
                   <th className="px-6 py-3" />
@@ -1303,6 +1514,9 @@ export default function Admin() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDateOnly(p?.fecha_prestamo)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDateOnly(p?.fecha_devolucion)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {p?.fecha_devolucion_real ? formatDateOnly(p?.fecha_devolucion_real) : '-'}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{p?.estado || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{Number(p?.extensiones ?? 0)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -1322,7 +1536,7 @@ export default function Admin() {
                 ))}
                 {Array.isArray(loans) && loans.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-4 text-sm text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-sm text-gray-500">
                       No hay préstamos.
                     </td>
                   </tr>

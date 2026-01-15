@@ -20,12 +20,6 @@ SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
 SET @@SESSION.SQL_LOG_BIN= 0;
 
 --
--- GTID state at the beginning of the backup 
---
-
-SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'ffe00b09-bd7f-11f0-9cc3-38ca84dfd5ed:1-183';
-
---
 -- Table structure for table `prestamo`
 --
 
@@ -36,6 +30,7 @@ CREATE TABLE `prestamo` (
   `id_prestamo` int NOT NULL AUTO_INCREMENT,
   `fecha_prestamo` date NOT NULL,
   `fecha_devolucion` date NOT NULL,
+  `fecha_devolucion_real` date DEFAULT NULL,
   `estado` varchar(50) NOT NULL,
   `extensiones` int NOT NULL DEFAULT 0,
   `id_usuario` int DEFAULT NULL,

@@ -20,12 +20,6 @@ SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
 SET @@SESSION.SQL_LOG_BIN= 0;
 
 --
--- GTID state at the beginning of the backup 
---
-
-SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'ffe00b09-bd7f-11f0-9cc3-38ca84dfd5ed:1-183';
-
---
 -- Table structure for table `rol`
 --
 
@@ -46,10 +40,12 @@ CREATE TABLE `rol` (
 
 LOCK TABLES `rol` WRITE;
 /*!40000 ALTER TABLE `rol` DISABLE KEYS */;
-INSERT INTO `rol` (`id_rol`, `nombre_rol`) VALUES (1,'ADMIN') AS new
-ON DUPLICATE KEY UPDATE `nombre_rol` = new.`nombre_rol`;
-INSERT INTO `rol` (`id_rol`, `nombre_rol`) VALUES (2,'USUARIO') AS new
-ON DUPLICATE KEY UPDATE `nombre_rol` = new.`nombre_rol`;
+INSERT INTO `rol` (`id_rol`, `nombre_rol`)
+VALUES (1,'ADMIN')
+ON DUPLICATE KEY UPDATE `nombre_rol` = VALUES(`nombre_rol`);
+INSERT INTO `rol` (`id_rol`, `nombre_rol`)
+VALUES (2,'USUARIO')
+ON DUPLICATE KEY UPDATE `nombre_rol` = VALUES(`nombre_rol`);
 /*!40000 ALTER TABLE `rol` ENABLE KEYS */;
 UNLOCK TABLES;
 SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;

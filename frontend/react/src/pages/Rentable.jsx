@@ -5,7 +5,8 @@
 
   ¿Por qué existe?
   - En la maqueta había una sección "Rentable".
-  - Aquí consumimos GET /api/libros?disponible=true para mostrar únicamente libros disponibles.
+  - En la versión actual, la ruta /rentable renderiza el Dashboard con el modo "rentable".
+  - Este archivo se conserva como pantalla alternativa (por referencia) y consume GET /api/libros?disponible=true.
 */
 
 import React, { useEffect, useMemo, useState } from 'react';

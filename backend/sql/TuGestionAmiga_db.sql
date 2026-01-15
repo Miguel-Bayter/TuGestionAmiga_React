@@ -6,17 +6,19 @@ CREATE TABLE rol (
   nombre_rol VARCHAR(50) NOT NULL UNIQUE
 );
 
-INSERT INTO rol (id_rol, nombre_rol) VALUES (1, 'ADMIN') AS new
-  ON DUPLICATE KEY UPDATE nombre_rol = new.nombre_rol;
+INSERT INTO rol (id_rol, nombre_rol)
+VALUES (1, 'ADMIN')
+ON DUPLICATE KEY UPDATE nombre_rol = VALUES(nombre_rol);
 
-INSERT INTO rol (id_rol, nombre_rol) VALUES (2, 'USUARIO') AS new
-  ON DUPLICATE KEY UPDATE nombre_rol = new.nombre_rol;
+INSERT INTO rol (id_rol, nombre_rol)
+VALUES (2, 'USUARIO')
+ON DUPLICATE KEY UPDATE nombre_rol = VALUES(nombre_rol);
 
 CREATE TABLE usuario (
   id_usuario INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL,
   correo VARCHAR(100) NOT NULL UNIQUE,
-  contraseña VARCHAR(255) NOT NULL,
+  `contraseña` VARCHAR(255) NOT NULL,
   id_rol INT,
   FOREIGN KEY (id_rol) REFERENCES rol(id_rol)
 );
@@ -56,6 +58,7 @@ CREATE TABLE prestamo (
   id_prestamo INT AUTO_INCREMENT PRIMARY KEY,
   fecha_prestamo DATE NOT NULL,
   fecha_devolucion DATE NOT NULL,
+  fecha_devolucion_real DATE NULL,
   estado VARCHAR(50) NOT NULL,
   extensiones INT NOT NULL DEFAULT 0,
   id_usuario INT,

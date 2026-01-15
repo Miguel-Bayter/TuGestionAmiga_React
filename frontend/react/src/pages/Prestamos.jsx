@@ -51,6 +51,12 @@ export default function Prestamos() {
     load();
   }, []);
 
+  useEffect(() => {
+    const onUpdated = () => load();
+    window.addEventListener('tga_loans_updated', onUpdated);
+    return () => window.removeEventListener('tga_loans_updated', onUpdated);
+  }, []);
+
   const formatDate = (value) => {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value || '');
@@ -178,6 +184,12 @@ export default function Prestamos() {
                   scope="col"
                   className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
+                  Devolución efectiva
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Estado
                 </th>
                 <th
@@ -191,7 +203,7 @@ export default function Prestamos() {
             <tbody className="bg-white divide-y divide-gray-200">
               {error ? (
                 <tr>
-                  <td colSpan={5} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
+                  <td colSpan={6} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
                     {error}
                   </td>
                 </tr>
@@ -199,7 +211,7 @@ export default function Prestamos() {
 
               {!error && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
+                  <td colSpan={6} className="px-4 sm:px-6 py-4 text-sm text-gray-500">
                     No tienes préstamos todavía.
                   </td>
                 </tr>
@@ -245,6 +257,9 @@ export default function Prestamos() {
                     </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_prestamo)}</td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(row?.fecha_devolucion)}</td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {row?.fecha_devolucion_real ? formatDate(row?.fecha_devolucion_real) : '-'}
+                    </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass}`}>
                         {(row?.estado || 'Desconocido') + (estado.includes('activo') ? ` (${ext}/2)` : '')}

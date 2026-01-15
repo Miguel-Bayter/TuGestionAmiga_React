@@ -74,7 +74,7 @@
   }
 
   .card-inner {
-    @apply p-4 flex flex-col sm:flex-row gap-4;
+    @apply p-4 flex flex-col sm:flex-row gap-4 items-start;
   }
 
   .book-meta {
@@ -90,15 +90,23 @@
   }
 
   .book-cover {
-    @apply w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-md border border-gray-200 flex-shrink-0;
+    @apply w-20 sm:w-24 md:w-28 object-cover rounded-md border border-gray-200 flex-shrink-0 bg-gray-50;
+    aspect-ratio: 3 / 4;
+    height: auto;
   }
 
   .view-grid .book-cover {
-    @apply w-full h-48 rounded-none border-0;
+    @apply w-full rounded-none border-0 bg-gray-50;
+    aspect-ratio: 3 / 4;
+    height: auto;
   }
 
   .book-actions {
     @apply mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2;
+  }
+
+  .book-actions-2 {
+    @apply sm:grid-cols-2;
   }
 
   .view-grid .book-actions {

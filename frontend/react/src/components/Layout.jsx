@@ -12,6 +12,7 @@
 */
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink } from 'react-router-dom';
 import Navbar from './Navbar.jsx';
 import { getStoredUser, subscribeAuth } from '../lib/auth.js';
@@ -49,6 +50,7 @@ export default function Layout({ children }) {
   const isAdmin = Number(user?.id_rol) === 1;
 
   const [cartCount, setCartCount] = useState(0);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -57,6 +59,10 @@ export default function Layout({ children }) {
       const id = user?.id_usuario;
       if (!id) {
         if (alive) setCartCount(0);
+        try {
+          if (typeof window !== 'undefined') window.__tga_cart_items = [];
+        } catch {
+        }
         return;
       }
 
@@ -65,8 +71,16 @@ export default function Layout({ children }) {
         const items = Array.isArray(data) ? data : [];
         const totalQty = items.reduce((acc, it) => acc + (Number(it?.cantidad) || 0), 0);
         if (alive) setCartCount(totalQty);
+        try {
+          if (typeof window !== 'undefined') window.__tga_cart_items = items;
+        } catch {
+        }
       } catch {
         if (alive) setCartCount(0);
+        try {
+          if (typeof window !== 'undefined') window.__tga_cart_items = [];
+        } catch {
+        }
       }
     };
 
@@ -78,6 +92,27 @@ export default function Layout({ children }) {
       window.removeEventListener('tga_cart_updated', onUpdated);
     };
   }, [user?.id_usuario]);
+
+  useEffect(() => {
+    let timer = null;
+
+    const onToast = (e) => {
+      const msg =
+        typeof e?.detail === 'string'
+          ? e.detail
+          : String(e?.detail?.message || '').trim();
+      if (!msg) return;
+      setToast({ message: msg, id: Date.now() });
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setToast(null), 2600);
+    };
+
+    window.addEventListener('tga_toast', onToast);
+    return () => {
+      window.removeEventListener('tga_toast', onToast);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // linkClass:
   // - NavLink permite saber si la ruta está activa.
@@ -349,6 +384,22 @@ export default function Layout({ children }) {
           <div className="max-w-7xl mx-auto">{children}</div>
         </main>
       </div>
+
+      {toast
+        ? (() => {
+            const portalTarget = typeof document !== 'undefined' ? document.body : null;
+
+            const node = (
+              <div className="fixed top-4 right-4 z-[90]">
+                <div className="max-w-sm rounded-2xl bg-gray-900/95 px-4 py-3 text-sm font-semibold text-white shadow-2xl ring-1 ring-white/10">
+                  {toast.message}
+                </div>
+              </div>
+            );
+
+            return portalTarget ? createPortal(node, portalTarget) : node;
+          })()
+        : null}
     </div>
   );
 }

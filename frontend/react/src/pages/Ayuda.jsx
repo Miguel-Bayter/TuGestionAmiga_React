@@ -51,8 +51,8 @@ export default function Ayuda() {
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-bold text-gray-900">Cómo comprar un libro</h3>
           <p className="mt-2 text-sm text-gray-700">
-            En una tarjeta de libro, pulsa <span className="font-semibold">Comprar</span>. El sistema registra la compra y el libro pasa a no
-            estar disponible.
+            En una tarjeta de libro, pulsa <span className="font-semibold">Comprar</span> para agregarlo al <span className="font-semibold">Carrito</span>.
+            Luego entra a <span className="font-semibold">Carrito</span> y confirma con <span className="font-semibold">Comprar</span> (checkout).
           </p>
         </div>
       </div>
